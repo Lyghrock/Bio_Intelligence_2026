@@ -1,0 +1,80 @@
+# ===========================
+# NEURON Simulation Files
+# ===========================
+# Compiled NEURON mechanisms
+*.o
+*.c
+*.so
+*.dll
+*.pyc
+*.pyo
+*.pyd
+nrniv_*
+mod_func.c
+x86_64/
+i686/
+
+# ===========================
+# LaTeX Auxiliary Files
+# ===========================
+*.aux
+*.log
+*.out
+*.toc
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.synctex(busy)
+*.synctex.gz(busy)
+*-blx.bib
+*.run.xml
+*.upa
+*.upb
+*.urc
+*.ern
+
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.venv/
+venv/
+ENV/
+
+# ===========================
+# Jupyter Notebook
+# ===========================
+.ipynb_checkpoints
+
+# ===========================
+# IDE / Editor
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===========================
+# Data & Output Files
+# ===========================
+*.dat
+*.tmp
+*.bak
+*.backup
