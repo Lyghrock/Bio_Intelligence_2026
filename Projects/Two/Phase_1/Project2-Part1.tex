@@ -1,0 +1,344 @@
+%!TEX program = xelatex
+\documentclass{article}
+\usepackage[a4paper,left=2.5cm,right=2.5cm,top=2.2cm,bottom=2.2cm]{geometry}
+\usepackage{listings}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{siunitx}
+\usepackage{booktabs}
+\usepackage[most]{tcolorbox}
+
+\sisetup{per-mode=reciprocal, inter-unit-product = \cdot}
+
+% Solution formatting (match Project 1 style)
+\newtcolorbox{solutionbox}{
+    enhanced,
+    breakable,
+    boxrule=0.6pt,
+    colframe=blue!35,
+    colback=blue!6,
+    arc=2mm,
+    left=1.2mm,
+    right=1.2mm,
+    top=1.0mm,
+    bottom=1.0mm,
+}
+% By default, each solution starts on a new page. For special cases, call
+% \nosolutionpagebreak right before \begin{solution}.
+\newif\ifsolutionclearpage
+\solutionclearpagetrue
+\newcommand{\nosolutionpagebreak}{\global\solutionclearpagefalse}
+\newenvironment{solution}{%
+    \ifsolutionclearpage\clearpage\fi
+    \global\solutionclearpagetrue
+    \par\noindent\begin{solutionbox}\textbf{\textit{Solution.}}\par\medskip\itshape
+}{%
+    \end{solutionbox}
+}
+
+\title{\textbf{Spring'\ 26 \; Introduction to Biological Intelligence: Brain Simulation\\ \textcolor{red}{Project 2 Part 1 :} Derivation \& Calculation}}
+\author{}
+\date{}
+
+\begin{document}
+\pagestyle{plain}
+\maketitle
+
+\vspace{-3.5em}
+
+{\centering
+\bf total 4 points (1 point for each problem)\par
+Due April 27, 2026, 23:59\par
+}
+\vspace{0.5em}
+
+{\bf What to hand in:}
+Please submit a formal report in English (PDF format).
+Only one report is required per team. 
+You may either write a new report or complete the designated sections in this document by loading the provided \texttt{.tex} file into Overleaf.
+
+\clearpage
+
+\section{The Space Constant and the One-Dimensional Approximation}
+
+In the derivation of the cable equation, the steady-state space constant is defined by
+\[
+\lambda=\sqrt{\frac{r_m}{r_a}}.
+\]
+
+This quantity characterizes how far a voltage perturbation can spread along a dendrite.
+A larger membrane resistance (per unit length) means less current leaks across the membrane, and therefore leads to a larger space constant.
+Likewise, a thicker dendrite has a larger space constant, reflecting the fact that axial current spreads more easily in a cable with larger diameter.
+
+For a cylindrical dendrite of diameter $d$, the membrane resistance per unit length and the axial resistance per unit length are
+\[
+r_m=\frac{R_m}{\pi d},
+\qquad
+r_a=\frac{4R_i}{\pi d^2}.
+\]
+
+\begin{enumerate}
+    \item Starting from
+    \[
+    \lambda=\sqrt{\frac{r_m}{r_a}},
+    \]
+    derive the expression of $\lambda$ in terms of $d$, $R_m$, and $R_i$.
+
+    \item For a typical apical dendrite with
+    \[
+    d=\SI{4}{\micro\meter},
+    \qquad
+    R_i=\SI{200}{\ohm\centi\meter},
+    \qquad
+    R_m=\SI{20000}{\ohm\centi\meter\squared},
+    \]
+    compute the value of $\lambda$.
+
+    \item Compare the resulting space constant with the dendritic diameter, and explain why this large separation of length scales justifies the common approximation that voltage variation across the radial direction can be neglected, so that the dendrite may be modeled as a one-dimensional cable.
+\end{enumerate}
+
+\begin{solution}
+\textbf{(1) Derive $\lambda$ in terms of $d, R_m, R_i$.}
+Substituting the given expressions for $r_m$ and $r_a$ into
+\[
+\lambda=\sqrt{\frac{r_m}{r_a}}
+\]
+we obtain
+\[
+\lambda
+=\sqrt{\frac{\frac{R_m}{\pi d}}{\frac{4R_i}{\pi d^2}}}
+=\sqrt{\frac{R_m}{\pi d}\cdot\frac{\pi d^2}{4R_i}}
+=\sqrt{\frac{R_m\,d}{4R_i}}.
+\]
+
+\medskip
+\textbf{(2) Numerical value for the typical apical dendrite.}
+First convert the diameter to centimeters:
+\[
+ d=\SI{4}{\micro\meter}=4\times 10^{-4}\,\si{\centi\meter}.
+\]
+Then
+\[
+\lambda
+=\sqrt{\frac{R_m d}{4R_i}}
+=\sqrt{\frac{(\SI{20000}{\ohm\centi\meter\squared})(4\times 10^{-4}\,\si{\centi\meter})}{4\cdot \SI{200}{\ohm\centi\meter}}}
+=\sqrt{\frac{8}{800}}\,\si{\centi\meter}
+=\sqrt{0.01}\,\si{\centi\meter}
+=0.1\,\si{\centi\meter}.
+\]
+Therefore
+\[
+\lambda=0.1\,\si{\centi\meter}=1\,\si{\milli\meter}=\SI{1000}{\micro\meter}.
+\]
+
+\medskip
+\textbf{(3) Why this supports the 1D (radially uniform) approximation.}
+Comparing the space constant to the diameter,
+\[
+\frac{\lambda}{d}=\frac{\SI{1000}{\micro\meter}}{\SI{4}{\micro\meter}}=250,
+\qquad
+\varepsilon\equiv\frac{d}{\lambda}=4\times 10^{-3}\ll 1.
+\]
+In passive cable theory, the \,\emph{axial} length scale over which $V$ changes appreciably is $\mathcal{O}(\lambda)$, while the \,\emph{radial} length scale is $\mathcal{O}(d)$.
+Thus, a crude gradient estimate gives
+\[
+\left|\frac{\partial V}{\partial r}\right|\sim \frac{V}{d},
+\qquad
+\left|\frac{\partial V}{\partial x}\right|\sim \frac{V}{\lambda},
+\qquad
+\frac{|\partial V/\partial x|}{|\partial V/\partial r|}\sim \frac{d}{\lambda}=\varepsilon\ll 1.
+\]
+Equivalently, any transverse (radial) non-uniformity would relax over a very short distance compared with the much longer axial variation scale set by $\lambda$.
+Because $d\ll\lambda$ here, the cross-section is well-approximated as \,\emph{isopotential}, so voltage can be treated as a function of $x$ only, i.e.
+$V=V(x,t)$, which is precisely the one-dimensional cable approximation.
+\end{solution}
+
+\clearpage
+
+\section{Steady-State Solution of the One-Dimensional Linear Cable Equation with a General Boundary Condition}
+
+Derive the steady-state solution of the one-dimensional linear cable equation under a general boundary condition (\(R_L\in[0,+\infty)\)), as discussed in the lecture slides.
+
+Your derivation should arrive at the following results:
+
+\begin{align*}
+    V(X)&=V_0\dfrac{\cosh(L-X)+\frac{R_{\infty}}{R_L}\sinh(L-X)}
+    {\cosh(L)+\frac{R_{\infty}}{R_L}\sinh(L)},\\[6pt]
+    R_{\mathrm{in}}&=R_{\infty}\dfrac{R_L+R_{\infty}\tanh(L)}
+    {R_{\infty}+R_L\tanh(L)}.
+\end{align*}
+
+\begin{solution}
+\textbf{1. Start from the (dimensional) cable equation.}
+For a passive cable with axial resistance per unit length $r_a$ and membrane resistance per unit length $r_m$ (and membrane capacitance per unit length $c_m$), the standard 1D cable equation reads
+\[
+\frac{1}{r_a}\,\frac{\partial^2 V}{\partial x^2}
+= c_m\,\frac{\partial V}{\partial t}+\frac{1}{r_m}V.
+\]
+Define the membrane time constant $\tau_m\equiv r_m c_m$ and the space constant $\lambda\equiv\sqrt{r_m/r_a}$.
+Introduce the dimensionless variables
+\[
+X\equiv\frac{x}{\lambda},\qquad T\equiv\frac{t}{\tau_m}.
+\]
+Multiplying the dimensional equation by $r_m$ and rewriting in $(X,T)$ gives the common normalized form
+\[
+\frac{\partial V}{\partial T}=\frac{\partial^2 V}{\partial X^2}-V.
+\]
+
+\medskip
+\textbf{2. Steady-state ODE and its general solution.}
+At steady state, $\partial V/\partial T=0$, hence
+\[
+\frac{\mathrm{d}^2 V}{\mathrm{d}X^2}-V=0.
+\]
+A convenient basis for later boundary conditions is to write the solution in terms of $(L-X)$:
+\[
+V(X)=a\cosh(L-X)+b\sinh(L-X),\qquad 0\le X\le L.
+\]
+
+\medskip
+\textbf{3. Derive the general boundary condition at $X=L$ (load resistance $R_L$).}
+The axial current in the cable is given by Ohm's law along the internal resistor:
+\[
+I_a(x)=-\frac{1}{r_a}\,\frac{\partial V}{\partial x}(x).
+\]
+At the distal end $x=L\lambda$ we connect a linear load resistance $R_L$ to ground, so the load current is
+\[
+I_L=\frac{V(L)}{R_L}.
+\]
+Current continuity at the end requires $I_a(L\lambda)=I_L$, i.e.
+\[
+-\frac{1}{r_a}\,\frac{\partial V}{\partial x}\bigg|_{x=L\lambda}=\frac{V(L)}{R_L}.
+\]
+Using $\partial/\partial x=(1/\lambda)\,\mathrm{d}/\mathrm{d}X$ and defining the (semi-infinite) characteristic resistance
+\[
+R_{\infty}\equiv r_a\lambda=\sqrt{r_a r_m},
+\]
+the boundary condition becomes
+\[
+\frac{\mathrm{d}V}{\mathrm{d}X}\bigg|_{X=L}=-\frac{R_{\infty}}{R_L}\,V(L).
+\]
+This reproduces the expected limits: sealed end $R_L\to\infty$ gives $\mathrm{d}V/\mathrm{d}X(L)=0$, and a killed (shorted) end $R_L\to 0$ forces $V(L)=0$.
+
+\medskip
+\textbf{4. Apply the distal boundary condition to determine $b$ in terms of $a$.}
+Differentiate the hyperbolic-form solution:
+\[
+\frac{\mathrm{d}V}{\mathrm{d}X}=-a\sinh(L-X)-b\cosh(L-X).
+\]
+At $X=L$ we have $\cosh(0)=1$ and $\sinh(0)=0$, so
+\[
+V(L)=a,\qquad \frac{\mathrm{d}V}{\mathrm{d}X}(L)=-b.
+\]
+Plugging into the boundary condition gives
+\[
+-b=-\frac{R_{\infty}}{R_L}\,a\quad\Longrightarrow\quad b=\frac{R_{\infty}}{R_L}\,a.
+\]
+Therefore,
+\[
+V(X)=a\left[\cosh(L-X)+\frac{R_{\infty}}{R_L}\sinh(L-X)\right].
+\]
+
+\medskip
+\textbf{5. Apply the proximal boundary condition $V(0)=V_0$.}
+Assume the left end is held at $V_0$ (voltage clamp), i.e.\ $V(0)=V_0$.
+Then
+\[
+V_0=V(0)=a\left[\cosh(L)+\frac{R_{\infty}}{R_L}\sinh(L)\right],
+\qquad
+a=\frac{V_0}{\cosh(L)+\frac{R_{\infty}}{R_L}\sinh(L)}.
+\]
+Substituting $a$ back yields the desired voltage profile:
+\[
+V(X)=V_0\,\frac{\cosh(L-X)+\frac{R_{\infty}}{R_L}\sinh(L-X)}{\cosh(L)+\frac{R_{\infty}}{R_L}\sinh(L)}.
+\]
+
+\medskip
+\textbf{6. Compute the input resistance $R_{\mathrm{in}}$ at $X=0$.}
+By definition,
+\[
+R_{\mathrm{in}}\equiv\frac{V(0)}{I_{\mathrm{in}}},
+\qquad
+I_{\mathrm{in}}\equiv I_a(0)= -\frac{1}{r_a}\,\frac{\partial V}{\partial x}\bigg|_{x=0}.
+\]
+Rewrite $I_{\mathrm{in}}$ in $X$ using $\partial/\partial x=(1/\lambda)\,\mathrm{d}/\mathrm{d}X$ and $R_{\infty}=r_a\lambda$:
+\[
+I_{\mathrm{in}}=-\frac{1}{r_a\lambda}\,\frac{\mathrm{d}V}{\mathrm{d}X}\bigg|_{X=0}
+=-\frac{1}{R_{\infty}}\,\frac{\mathrm{d}V}{\mathrm{d}X}\bigg|_{X=0}.
+\]
+From the expression for $V(X)$,
+\[
+\frac{\mathrm{d}V}{\mathrm{d}X}=-a\left[\sinh(L-X)+\frac{R_{\infty}}{R_L}\cosh(L-X)\right],
+\]
+so at $X=0$,
+\[
+\frac{\mathrm{d}V}{\mathrm{d}X}(0)=-a\left[\sinh(L)+\frac{R_{\infty}}{R_L}\cosh(L)\right].
+\]
+Hence
+\[
+I_{\mathrm{in}}=
+\frac{a}{R_{\infty}}\left[\sinh(L)+\frac{R_{\infty}}{R_L}\cosh(L)\right],
+\qquad
+V(0)=V_0=a\left[\cosh(L)+\frac{R_{\infty}}{R_L}\sinh(L)\right].
+\]
+Taking the ratio gives
+\[
+R_{\mathrm{in}}
+=R_{\infty}\,\frac{\cosh(L)+\frac{R_{\infty}}{R_L}\sinh(L)}{\sinh(L)+\frac{R_{\infty}}{R_L}\cosh(L)}.
+\]
+Divide numerator and denominator by $\cosh(L)$ and use $\tanh(L)=\sinh(L)/\cosh(L)$:
+\[
+R_{\mathrm{in}}
+=R_{\infty}\,\frac{1+\frac{R_{\infty}}{R_L}\tanh(L)}{\tanh(L)+\frac{R_{\infty}}{R_L}}
+=R_{\infty}\,\frac{R_L+R_{\infty}\tanh(L)}{R_{\infty}+R_L\tanh(L)}.
+\]
+This is exactly the expression given above.
+\end{solution}
+
+\clearpage
+\section{The Impedance-Matching Principle for Reducing a Dendritic Tree to an Equivalent Cylinder}
+
+As Rall first showed in the early 1960s, an entire class of dendritic trees can be reduced, or collapsed, into a single equivalent cylinder whose electrotonic length is $L$ and whose diameter satisfies
+\[
+d_{\mathrm{eq}}^{\frac{3}{2}}=\sum_j d_j^{\frac{3}{2}},
+\]
+where the sum is taken over the diameters of all terminal branches, provided that the following four conditions are satisfied:
+\begin{enumerate}
+    \item The specific membrane resistance $R_m$ and the intracellular resistivity $R_i$ are identical in all branches.
+    \item All terminals share the same boundary condition (here we assume sealed-end boundary conditions).
+    \item All terminal branches terminate at the same electrotonic distance $L$ from the origin of the main branch, where $L$ is the sum of the $L_i$ values along the path from the origin to the distal end of each terminal branch. Thus, $L$ is also the electrotonic length of the equivalent cylinder. (Note that this requirement does not restrict us only to perfectly symmetric trees.)
+    \item At every branch point, the infinite input resistances must be matched, which implies
+    \[
+    d_0^{\frac{3}{2}} = d_1^{\frac{3}{2}} + d_2^{\frac{3}{2}}.
+    \]
+    This last condition is known as the $d^{\frac{3}{2}}$ law.
+\end{enumerate}
+
+If these four conditions are satisfied, the equivalent cylinder reproduces exactly the electrical behavior of the entire dendritic tree. In other words, injecting current at the leftmost terminal of the tree yields exactly the same voltage response as injecting the same current at the corresponding location of the equivalent cylinder.
+
+Prove the conclusion stated above.
+
+\clearpage
+
+\section{Forward Euler vs.\ Backward Euler: A Simple Example of Numerical Stability}
+
+We now use a simple example to illustrate the instability of the forward Euler method and the stability of the backward Euler method.
+
+Consider the passive membrane equation introduced in the lecture slides:
+\[
+\frac{\mathrm{d}V}{\mathrm{d}t}(t)+\frac{1}{\tau_m}V(t)=0.
+\]
+
+\begin{enumerate}
+    \item Derive the iteration formula obtained from the forward Euler method.
+    \item Derive the iteration formula obtained from the backward Euler method.
+    \item For each method, discuss whether the stability of the iteration depends on the size of $\Delta t$ relative to $\tau_m$.
+    \item Based on your result, explain why the forward Euler method may become unstable for large time steps, whereas the backward Euler method remains stable.
+\end{enumerate}
+
+\noindent\textbf{Hint.}
+Analyze when the magnitude of the amplification factor in interation equation is smaller than 1.
+
+\end{document}
