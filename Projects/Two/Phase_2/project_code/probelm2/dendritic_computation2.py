@@ -76,8 +76,6 @@ APICAL_BAP_TARGET_UM = 350
 APICAL_DISTAL_TARGET_UM = 650
 BASAL_TARGET_UM = 120
 APICAL_PROXIMAL_TARGET_UM = 120
-BASAL_TARGETS_UM = [120,650]
-APICAL_PROXIMAL_TARGETS_UM = [481,482,627,628]
 CLUSTER_SIZES = [1, 5, 10, 20]
 SYN_WEIGHT_SWEEP = [10,0.51,0.5,0.046,0.045,0.01]
 
@@ -188,29 +186,20 @@ if args.task == "synapse":
     # Task ii: synaptic inputs only.
     h.tstop = 350
     site_specs = [
-        # ("soma", "soma", False),
+        ("soma", "soma", False),
         # ("basal_shaft", "basal", False),
         # ("basal_spine", "basal", True),
-        ("apical_proximal_shaft", "apical_proximal", False),
-        ("apical_proximal_spine", "apical_proximal", True),
-        # ("apical_distal_shaft", "apical_distal", False),
-        # ("apical_distal_spine", "apical_distal", True),
+        # ("apical_proximal_shaft", "apical_proximal", False),
+        # ("apical_proximal_spine", "apical_proximal", True),
+        ("apical_distal_shaft", "apical_distal", False),
+        ("apical_distal_spine", "apical_distal", True),
     ]
 
     for figure_name, target_name, use_spines in site_specs:
         traces_by_condition = {}
         time = None
-        if target_name == "basal":
-            target_distances = BASAL_TARGETS_UM
-        elif target_name == "apical_proximal":
-            target_distances = APICAL_PROXIMAL_TARGETS_UM
-        elif target_name == "apical_distal":
-            target_distances = [APICAL_DISTAL_TARGET_UM]
-        else:
-            target_distances = [None]
 
-        for target_um in target_distances:
-            n_synapses = 1
+        for n_synapses in CLUSTER_SIZES:
             cell = HPC("./", spine_density=SPINE_DENSITY)
             CELLS.append(cell)
             cell.add_full_spine(cell.HCell, 0.25, 1.35, 2.8, cell.HCell.soma[0].Ra)
@@ -218,9 +207,9 @@ if args.task == "synapse":
             if target_name == "soma":
                 center_seg = cell.HCell.soma[0](0.5)
             elif target_name == "basal":
-                center_seg = cell.nearest_segment("basal", target_um)
+                center_seg = cell.nearest_segment("basal", BASAL_TARGET_UM)
             elif target_name == "apical_proximal":
-                center_seg = cell.nearest_segment("apical", target_um)
+                center_seg = cell.nearest_segment("apical", APICAL_PROXIMAL_TARGET_UM)
             else:
                 center_seg = cell.nearest_segment("apical", APICAL_DISTAL_TARGET_UM)
 
@@ -291,12 +280,7 @@ if args.task == "synapse":
             h.continuerun(h.tstop)
 
             time = np.array(t_vec)
-            if target_um is None:
-                condition_label = "single"
-            else:
-                condition_label = f"d={target_um:.0f}um"
-
-            traces_by_condition[condition_label] = {
+            traces_by_condition[f"n={n_synapses}"] = {
                 "soma": np.array(soma_v),
                 "input_site": np.array(input_v),
             }
@@ -305,10 +289,11 @@ if args.task == "synapse":
         plot_soma_and_dendrite(
             time,
             traces_by_condition,
-            output_dir / f"task_ii_synapse_{figure_name}.png",
+            output_dir / f"task_ii_synapse_{figure_name}2.png",
             f"Task ii: synaptic input at {figure_name}",
             "input_site",
         )
+
 
 if args.task == "bac":
     # Task iii: bAPs + clustered synaptic inputs.

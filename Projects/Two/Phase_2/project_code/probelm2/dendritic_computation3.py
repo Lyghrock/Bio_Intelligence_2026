@@ -76,7 +76,7 @@ APICAL_BAP_TARGET_UM = 350
 APICAL_DISTAL_TARGET_UM = 650
 BASAL_TARGET_UM = 120
 APICAL_PROXIMAL_TARGET_UM = 120
-BASAL_TARGETS_UM = [120,650]
+BASAL_TARGETS_UM = [120,252,386,518,650]
 APICAL_PROXIMAL_TARGETS_UM = [481,482,627,628]
 CLUSTER_SIZES = [1, 5, 10, 20]
 SYN_WEIGHT_SWEEP = [10,0.51,0.5,0.046,0.045,0.01]
@@ -189,8 +189,8 @@ if args.task == "synapse":
     h.tstop = 350
     site_specs = [
         # ("soma", "soma", False),
-        # ("basal_shaft", "basal", False),
-        # ("basal_spine", "basal", True),
+        ("basal_shaft", "basal", False),
+        ("basal_spine", "basal", True),
         ("apical_proximal_shaft", "apical_proximal", False),
         ("apical_proximal_spine", "apical_proximal", True),
         # ("apical_distal_shaft", "apical_distal", False),
@@ -305,7 +305,7 @@ if args.task == "synapse":
         plot_soma_and_dendrite(
             time,
             traces_by_condition,
-            output_dir / f"task_ii_synapse_{figure_name}.png",
+            output_dir / f"task_ii_synapse_{figure_name}3.png",
             f"Task ii: synaptic input at {figure_name}",
             "input_site",
         )

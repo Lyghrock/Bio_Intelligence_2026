@@ -9,6 +9,7 @@
 \usepackage{booktabs}
 \usepackage{xcolor}
 \usepackage[most]{tcolorbox}
+\usepackage{caption}
 
 \sisetup{per-mode=reciprocal, inter-unit-product = \cdot}
 
@@ -73,6 +74,180 @@ Show the L5 pyramidal cell (Hay, 2011) can generate bAPs on apical dendrites wit
 Place a single synapse (\texttt{exp2syn\_exc}) on the L5 pyramidal cell model, how the synaptic input location (e.g. soma, basal/apical dendrite shafts, spines) influence the voltage responses at the input site and the soma? How about the case when the synaptic inputs are clustered ($n$ synapses at one location, $n=5,10,20$)?
 
 \begin{solution}
+    \section*{Varying Synaptic Weight  (Fixed n=1)}
+In the first part of this experiment, we systematically varied the synaptic weight ($w$) to evaluate how stimulus intensity affects the voltage response when a single synapse (\texttt{exp2syn\_exc}) is placed at different locations on the L5 pyramidal cell.
+
+\textbf{1. Subthreshold Responses at Basal and Proximal Dendrites} \\
+Interestingly, across a remarkably large span of synaptic weights (from $w=0.01$ up to $w=10$), synaptic inputs placed at the basal dendrites and apical proximal dendrites (whether on the dendritic shaft or a spine) failed to evoke any action potentials (spikes) at the soma. As observed in the recorded traces (Figure 1), these locations only produced subthreshold Excitatory Postsynaptic Potentials (EPSPs). Action potentials were only successfully generated when inputs were applied to the soma or the apical distal dendrites.
+
+This seemingly counter-intuitive result—where physically closer inputs (basal/proximal) fail to elicit a spike, while farther inputs (apical distal) succeed—can be explained by two key biophysical mechanisms:
+
+\begin{itemize}
+    \item \textbf{The Soma as a Massive Current Sink:} Proximal and basal dendrites are extremely close to the soma, electrically coupling them to a massive "current sink" with huge membrane capacitance and leak conductance. Because of the synaptic reversal potential ($0$ mV), the local depolarization is strictly capped at $0$ mV (synaptic saturation). A single synapse, even with an infinitely large weight ($w=10$), can only provide a physically limited amount of axial current. This capped current is instantly shunted into the massive somatic sink, which is completely insufficient to charge the soma to the action potential threshold (around $-50$ mV).
+    \item \textbf{Active Dendritic Amplification at Distal Sites:} Unlike proximal shafts, the apical distal dendrites of L5 pyramidal cells (such as the Hay model) are equipped with active voltage-gated ion channels (e.g., $Na^+$ and $Ca^{2+}$ channels). A strong synaptic input at the distal tuft does not merely decay passively; it is strong enough to trigger a \textbf{local dendritic spike}. This active spike recruits voltage-gated channels over a larger local area, acting as an amplifier that generates a massive, sustained depolarizing current. It is this amplified active current that successfully travels down the apical trunk to push the soma past its threshold.
+\end{itemize}
+
+\begin{center}
+    \begin{minipage}{0.48\linewidth}
+        \includegraphics[width=\linewidth]{task_ii_synapse_basal_shaft1.png}
+    \end{minipage}\hfill
+    \begin{minipage}{0.48\linewidth}
+        \includegraphics[width=\linewidth]{task_ii_synapse_basal_spine1.png}
+    \end{minipage}
+    \vspace{0.5em}
+    
+    \begin{minipage}{0.48\linewidth}
+        \includegraphics[width=\linewidth]{task_ii_synapse_apical_proximal_shaft1.png}
+    \end{minipage}\hfill
+    \begin{minipage}{0.48\linewidth}
+        \includegraphics[width=\linewidth]{task_ii_synapse_apical_proximal_spine1.png}
+    \end{minipage}
+    \captionof{figure}{Voltage responses with a single synapse at basal and apical proximal locations (shaft and spine). No action potentials are generated at the soma even with extremely large synaptic weights (up to $w=10$).}
+\end{center}
+
+\textbf{2. Synaptic Input at the Soma and Depolarization Block} \\
+When the synapse is placed directly at the soma, the somatic membrane potential exhibits a strong dependence on the synaptic weight. 
+
+\begin{center}
+    \includegraphics[width=0.85\linewidth]{task_ii_synapse_soma1.png}
+    \captionof{figure}{Voltage responses when a single synapse is placed at the soma with varying synaptic weights.}
+\end{center}
+
+As shown in Figure 2, the critical threshold for generating an action potential lies between $w=0.042$ and $w=0.044$. At $w=0.044$, the depolarization is just sufficient to trigger a single spike. As the stimulus intensity increases ($w=0.1$), the number of spikes increases to 3. This is because the stronger synaptic current can repeatedly push the membrane potential past the threshold after each repolarization. 
+
+However, as the intensity increases further ($w=0.5$ and $w=1$), the number of spikes paradoxically decreases back to 2 or 1. This phenomenon is driven by the \textbf{Depolarization Block}. The excessively large synaptic conductance clamps the somatic membrane potential at a highly depolarized plateau (around $-30$ mV to $-40$ mV). Because the membrane potential cannot repolarize to a sufficiently negative resting state, the voltage-gated sodium channels ($Na^+$ channels) remain trapped in their inactivated state. Without the recovery of these sodium channels, the neuron is entirely blocked from generating subsequent spikes, resulting in only the initial action potential.
+
+\textbf{3. Synaptic Input at Apical Distal Dendrites (Shaft)} \\
+In contrast to the proximal and basal dendrites, strong synaptic inputs at the apical distal locations successfully triggered somatic action potentials. We first analyze the response when the synapse is located directly on the apical distal shaft.
+
+\begin{center}
+    \includegraphics[width=0.85\linewidth]{task_ii_synapse_apical_distal_shaft1.png}
+    \captionof{figure}{Voltage responses when a single synapse is placed at the apical distal shaft.}
+\end{center}
+
+As shown in Figure 3, the threshold for generating a single somatic action potential lies precisely between $w=0.045$ and $w=0.046$.  When the weight is slightly increased to $w=0.046$, a single somatic spike is generated. As the stimulus intensity is further increased to $w=0.5$, the prolonged dendritic depolarization becomes sufficient to trigger a second spike at the soma.
+
+When the weight is increased from $w=0.046$ to $w=0.5$, the number of somatic spikes increases from 1 to 2. This occurs because the stronger synaptic input generates a broader and more sustained dendritic depolarization. Even after the soma fires the first spike and repolarizes, this prolonged residual current propagating from the distal dendrite is still sufficient to push the soma past the threshold a second time. 
+
+However, a highly notable phenomenon occurs at extreme stimulus intensities ($w=0.5$, $w=0.51$, and $w=10$): the voltage traces at both the input site and the soma almost perfectly overlap, and \textbf{the maximum number of spikes hits a hard ceiling of exactly two}. This is caused by \textbf{Synaptic Saturation (or Driving Force Clamping)}. 
+
+The synaptic current $I_{syn}$ is governed by the equation $I_{syn} = g_{syn}(V_m - E_{syn})$, where $E_{syn}$ is the reversal potential of the excitatory synapse ($0$ mV). When the synaptic weight ($g_{syn}$) is sufficiently large ($w \ge 0.5$), the massive inward current rapidly depolarizes the local dendritic membrane to $0$ mV. Once $V_m$ reaches $E_{syn}$, the driving force $(V_m - E_{syn})$ drops to zero, capping the local depolarization. Because the local voltage cannot exceed $0$ mV regardless of how large the weight becomes, the magnitude and duration of the depolarization propagated to the soma cannot increase any further. This "maximum possible" electrotonic signal from this specific distal location is only strong enough to drive two action potentials before the synaptic conductance decays. Consequently, the spike count is permanently capped at two, perfectly matching the overlapping voltage traces.
+
+Furthermore, an important observation regarding the timing of the action potentials is that \textbf{a stronger stimulus intensity results in a shorter spike delay}. As seen in Figure 3, the first somatic spike initiates noticeably earlier for $w=0.5$ compared to $w=0.046$. This latency reduction is directly related to the charging rate of the membrane capacitance ($C_m$). A larger synaptic weight produces a greater synaptic conductance ($g_{syn}$), which initially generates a much larger inward synaptic current ($I_{syn}$). According to the membrane equation ($C_m \frac{dV}{dt} = \sum I$), this larger current charges the local membrane capacitance much more rapidly, leading to a steeper rise in voltage ($\frac{dV}{dt}$). Consequently, the depolarization propagates to the soma and reaches the action potential threshold in a shorter amount of time.
+
+\textbf{4. Synaptic Input at Apical Distal Dendrites (Spine)} \\
+Finally, we examine the scenario where the synapse is placed on a dendritic spine at the identical apical distal location.
+
+\begin{center}
+    \includegraphics[width=0.85\linewidth]{task_ii_synapse_apical_distal_spine1.png}
+    \captionof{figure}{Voltage responses when a single synapse is placed at the apical distal spine.}
+\end{center}
+
+As shown in Figure 4, the phenomena on the spine share similarities with the shaft but exhibit drastically different quantitative thresholds. The critical threshold for generating a somatic spike is shifted significantly higher, lying between $w=0.5$ and $w=0.51$. A weight of $w=0.5$, which triggered two spikes on the shaft, completely fails to elicit any spike when placed on the spine. 
+
+At $w=0.51$ and $w=10$, exactly one action potential is generated. Consistent with our previous analysis, \textbf{a stronger intensity ($w=10$) results in a noticeably shorter spike delay} compared to $w=0.51$. This is because the larger synaptic conductance ($g_{syn}$) injects a massive initial current that more rapidly charges the local capacitance, leading to an earlier threshold crossing.
+
+\textbf{5. Comparison: Why is the Shaft More Excitable than the Spine?} \\
+A striking contrast emerges when comparing the two distal inputs: the shaft is far more effective at driving somatic spikes than the spine. The shaft has a much lower threshold ($w \approx 0.046$ vs $w \approx 0.51$) and can generate more spikes before saturating (maximum 2 spikes vs 1 spike).
+
+This profound difference is fundamentally caused by the \textbf{Spine Neck Resistance ($R_{neck}$)} and its exacerbation of \textbf{Synaptic Saturation}:
+\begin{itemize}
+    \item \textbf{The Bottleneck Effect:} A dendritic spine consists of a bulbous head connected to the parent dendrite via a narrow, highly resistive spine neck. When a synapse on the spine head opens, the synaptic current must flow through this high-resistance bottleneck. 
+    \item \textbf{Premature Saturation:} According to Ohm's law, this high resistance causes a massive and instantaneous local voltage drop. As a result, the membrane potential at the spine head shoots up to the synaptic reversal potential ($0$ mV) almost instantly (as seen in the steep rise in the input\_site panel). Once it hits $0$ mV, the driving force $(V_m - E_{syn})$ drops to zero, and the synapse stops injecting current.
+    \item \textbf{Limited Charge Transfer:} Because the spine head saturates so rapidly, the total amount of charge (current $\times$ time) that actually makes it through the neck and into the main dendritic shaft is severely "choked". 
+\end{itemize}
+
+Conversely, when the synapse is placed directly on the shaft, it injects current into a much larger cable with lower input resistance and larger capacitance. It takes much longer for the shaft to reach $0$ mV, allowing the synapse to stay "open" longer and deliver a vastly larger total charge to the dendritic tree. Therefore, the spine isolates the synapse electrically, making it much harder to depolarize the soma, which brilliantly explains why the spine limits the neuron to just 1 spike even at an extreme weight of $w=10$.
+
+\section*{Varying Number of Clustered Synapses (Fixed Weight $w=0.6$)} 
+In the second phase of the experiment, we fixed the synaptic weight at a high value ($w=0.6$) and varied the number of clustered synapses ($n = 1, 5, 10, 20$) to investigate spatial summation.
+
+\textbf{1. Persistent Subthreshold Responses at Proximal and Basal Dendrites} \\
+Similar to the single-synapse experiment, clustered synapses placed at the basal dendrites and apical proximal dendrites (both shaft and spine) still completely failed to generate any somatic action potentials. Even with 20 clustered synapses ($n=20$), the massive current sink of the soma and the lack of sufficient active dendritic amplification in these proximal regions shunt the depolarizing current, leaving the soma with only subthreshold EPSPs.
+
+\textbf{2. Clustered Synapses at the Soma: Exacerbated Depolarization Block} \\
+When the clustered synapses are placed directly at the soma, increasing the cluster size $n$ has an effect functionally identical to drastically increasing the synaptic weight of a single synapse. 
+
+\begin{center}
+    \includegraphics[width=0.85\linewidth]{task_ii_synapse_soma2.png}
+    \captionof{figure}{Voltage responses for clustered synapses at the soma ($w=0.6$).}
+\end{center}
+
+As shown in Figure 5, adding more synapses increases the total synaptic conductance ($G_{total} = n \cdot g_{syn}$). Because a single synapse at $w=0.6$ is already strong enough to induce a Depolarization Block, multiplying this conductance simply forces the soma into an even deeper clamped state. The excessive inward current locks the membrane potential at a highly depolarized plateau (around $-30$ mV to $-20$ mV), keeping the voltage-gated sodium channels permanently inactivated. Consequently, regardless of how large $n$ becomes, the spike count is suppressed and restricted to just the initial single spike. 
+
+\textbf{3. Clustered Synapses at the Apical Distal Shaft: Absolute Overlap} \\
+A fascinating phenomenon is observed when the clusters are placed on the apical distal shaft: the voltage traces for $n=1, 5, 10$, and $20$ are completely indistinguishable.
+
+\begin{center}
+    \includegraphics[width=0.85\linewidth]{task_ii_synapse_apical_distal_shaft2.png}
+    \captionof{figure}{Voltage responses for clustered synapses at the apical distal shaft ($w=0.6$).}
+\end{center}
+
+As seen in Figure 6, all conditions produce exactly two somatic spikes, and the curves perfectly overlap. This is the ultimate demonstration of \textbf{Synaptic Saturation} completely rendering $n$ irrelevant. Because $w=0.6$ is exceptionally large, even a single synapse ($n=1$) is capable of instantaneously pulling the local dendritic membrane potential to the synaptic reversal potential ($0$ mV). Once $V_m$ reaches $0$ mV, the driving force is zero. Adding more synapses on the shaft merely opens more channels, but the local voltage cannot exceed $0$ mV. Therefore, the electrotonic current propagated to the soma remains identical for all $n$, resulting in the exact same dual-spike response.
+
+\textbf{4. Clustered Synapses at the Apical Distal Spine: Overcoming the Bottleneck} \\
+The most dramatic difference occurs when the clustered synapses are distributed across apical distal spines. Unlike the shaft, increasing the cluster size $n$ on spines significantly alters the somatic output.
+
+\begin{center}
+    \includegraphics[width=0.85\linewidth]{task_ii_synapse_apical_distal_spine2.png}
+    \captionof{figure}{Voltage responses for clustered synapses at apical distal spines ($w=0.6$).}
+\end{center}
+
+As illustrated in Figure 7, increasing $n$ leads to two distinct outcomes:
+\begin{itemize}
+    \item \textbf{More Spikes:} Smaller clusters ($n=1, 5$) produce only 1 somatic spike, whereas larger clusters ($n=10, 20$) successfully drive 2 somatic spikes.
+    \item \textbf{Shorter Latency:} As $n$ increases, the delay of the first spike becomes progressively shorter.
+\end{itemize}
+
+\textbf{Mechanism:} Why does $n$ matter for spines but not for the shaft? In the NEURON simulation, "clustered" synapses on spines are distributed across \textit{multiple adjacent spines} along a dendritic segment. If all synapses were on a single spine head, they would suffer from the same severe "Spine Neck Resistance ($R_{neck}$)" bottleneck and saturate immediately, just like $n=1$. 
+
+However, because they are on \textit{different} spines, they act as \textbf{parallel current sources}. Each spine head saturates at $0$ mV independently, but each spine neck now contributes its own parallel stream of axial current into the main dendritic shaft. According to parallel circuit laws, the total injected current becomes $I_{total} \approx n \times I_{single\_spine}$. This spatial distribution effectively bypasses the high-resistance bottleneck of a single spine, allowing the total injected charge to scale with $n$. This larger compounded current charges the main dendrite faster (reducing spike delay) and sustains the depolarization longer (increasing the spike count from 1 to 2).
+
+
+\section*{Varying Spatial Distance (Fixed $w=0.6$, $n=1$)} 
+In the final phase of this experiment, we fixed the synaptic weight at $w=0.6$ with a single synapse ($n=1$) and systematically varied its path distance ($d$) from the soma to investigate the spatial dependency of spike generation.
+
+\textbf{1. Signal Attenuation in Basal Dendrites} \\
+We first placed the synapse on the basal dendrites (both shaft and spine) and varied the distance from $d=120\mu m$ up to $d=650\mu m$. 
+
+\begin{center}
+    \begin{minipage}{0.48\linewidth}
+        \includegraphics[width=\linewidth]{task_ii_synapse_basal_shaft3.png}
+    \end{minipage}\hfill
+    \begin{minipage}{0.48\linewidth}
+        \includegraphics[width=\linewidth]{task_ii_synapse_basal_spine3.png}
+    \end{minipage}
+    \captionof{figure}{Voltage responses for a single synapse ($w=0.6$) placed at varying distances along the basal dendrites.}
+\end{center}
+
+As shown in Figure 8, the basal dendrites completely fail to elicit a somatic spike regardless of the distance. While basal dendrites are not entirely passive and contain $Na^+$ and NMDA channels capable of generating local spikes, they fundamentally lack the robust, forward-propagating active amplification mechanisms (such as the dense $Ca^{2+}$ hotspots) found in the apical tuft. Consequently, any local depolarization generated in the basal tree is rapidly attenuated and swallowed by the massive current sink of the nearby soma before it can trigger a full somatic action potential.
+
+\textbf{2. Apical Dendrites: Spatial Thresholds and the Shaft vs. Spine Dichotomy} \\
+A completely different dynamic is observed when the synapse is moved along the apical dendrites. Comparing the shaft and the spine side-by-side reveals how local geometry and non-uniform ion channel distributions interact.
+
+\begin{center}
+    \begin{minipage}{0.48\linewidth}
+        \includegraphics[width=\linewidth]{task_ii_synapse_apical_proximal_shaft3.png}
+    \end{minipage}\hfill
+    \begin{minipage}{0.48\linewidth}
+        \includegraphics[width=\linewidth]{task_ii_synapse_apical_proximal_spine3.png}
+    \end{minipage}
+    \captionof{figure}{Voltage responses for a single synapse ($w=0.6$) placed at varying distances along the apical shaft (left) and spine (right).}
+\end{center}
+
+Based on the traces, we can clearly delineate the biophysical differences between the two geometries:
+
+\begin{itemize}
+    \item \textbf{The Shaft's Critical Point ($d=482\mu m$):} 
+    For the \textbf{shaft}, the synapse directly injects current into the main dendritic cable. At distances $\ge 482\mu m$, the synapse reaches regions with sufficient voltage-gated channels to ignite genuine active \textbf{local dendritic spikes}. Because there is no spine neck bottleneck, the full synaptic current charges the shaft, easily triggering these active mechanisms and propagating robust spikes to the soma.
+    Conversely, observing the \texttt{input\_site} panel for the \textbf{spine}, the local voltage rapidly shoots to roughly $0$ mV and maintains a prolonged plateau($d=628\mu m$).It is because that the spine head is tiny and connected via a high-resistance neck, it instantly charges to the synaptic reversal potential ($E_{syn} = 0$ mV), driving the net current $(V_m - E_{syn})$ to zero.
+
+    \item \textbf{The Spine's Critical Point ($d=628\mu m$):} 
+    At $d=482\mu m$ or $627\mu m$, the tiny amount of charge that manages to leak through the highly resistive spine neck is simply insufficient to depolarize the adjacent shaft to its active threshold. Therefore, no spike is propagated. 
+    However, at $d=628\mu m$, two  factors align: the distal dendritic branches become much thinner (resulting in a significantly higher input resistance, $R_{in}$), and this specific location perfectly overlaps with the core of the apical \textbf{$Ca^{2+}$ hotspot}. According to Ohm's law ($\Delta V = I \times R_{in}$), even the severely bottlenecked minute current leaking from the spine neck now produces a drastically larger voltage change in the highly sensitive shaft. This triggers an explosive $Ca^{2+}$ spike \textbf{on the shaft itself}. It is this massive depolarization on the shaft that successfully propagates down to the soma to elicit the action potential.
+\end{itemize}
+
+In conclusion, distance determines the input resistance and the availability of active channel hotspots. The spine limits charge transfer, meaning a synapse on a spine can only drive a somatic spike if it is strategically placed at extreme distal hotspots ($d=628\mu m$) where the shaft's extreme sensitivity compensates for the spine neck's bottleneck.
 \end{solution}
 \clearpage
 

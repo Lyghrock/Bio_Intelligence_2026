@@ -14,20 +14,10 @@ NEURON terms used below:
 * x: relative position on a section, from 0 to 1.
 """
 
-import os
 from pathlib import Path
 
 import numpy as np
-from neuron import h
-
-# NOTE: Importing NEURON's `gui` module can trigger screen update callbacks
-# (screen_update/doNotify) during long `h.continuerun()` calls on some systems.
-# Default to **no GUI** for stable batch runs; allow opt-in via NEURON_GUI=1.
-gui = None
-if os.environ.get("NEURON_GUI", "0") == "1":  # pragma: no cover
-    from neuron import gui as _gui  # type: ignore
-
-    gui = _gui
+from neuron import h, gui  # gui is imported so NEURON's standard GUI tools are available.
 
 
 DOMAIN_ALIASES = {

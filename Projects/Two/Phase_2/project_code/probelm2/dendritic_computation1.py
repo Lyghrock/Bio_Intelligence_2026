@@ -15,6 +15,12 @@ Example commands:
 from argparse import ArgumentParser
 import gc
 from pathlib import Path
+import sys
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+CODES_DIR = ROOT_DIR / "codes"
+if str(CODES_DIR) not in sys.path:
+    sys.path.insert(0, str(CODES_DIR))
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -62,7 +68,7 @@ SOMA_STIM_AMP = 0.45
 # Excitatory Exp2Syn parameters used in the synaptic-input scaffold.
 SYN_START = 100
 SYN_START_BAC = 205
-SYN_WEIGHT = 0.6
+SYN_WEIGHT = 0.00073
 SYN_WEIGHT_BAC = 0.0015
 SYN_TAU1 = 0.3
 SYN_TAU2 = 1.8
@@ -76,8 +82,6 @@ APICAL_BAP_TARGET_UM = 350
 APICAL_DISTAL_TARGET_UM = 650
 BASAL_TARGET_UM = 120
 APICAL_PROXIMAL_TARGET_UM = 120
-BASAL_TARGETS_UM = [120,650]
-APICAL_PROXIMAL_TARGETS_UM = [481,482,627,628]
 CLUSTER_SIZES = [1, 5, 10, 20]
 SYN_WEIGHT_SWEEP = [10,0.51,0.5,0.046,0.045,0.01]
 
@@ -137,7 +141,7 @@ if args.task == "bap":
         ("control", False),
         ("proximal_apical_Na_removed", True),
     ]:
-        cell = HPC("./", spine_density=SPINE_DENSITY)
+        cell = HPC(str(CODES_DIR), spine_density=SPINE_DENSITY)
         CELLS.append(cell)
         cell.add_full_spine(cell.HCell, 0.25, 1.35, 2.8, cell.HCell.soma[0].Ra)
 
@@ -188,39 +192,31 @@ if args.task == "synapse":
     # Task ii: synaptic inputs only.
     h.tstop = 350
     site_specs = [
-        # ("soma", "soma", False),
-        # ("basal_shaft", "basal", False),
-        # ("basal_spine", "basal", True),
+        ("soma", "soma", False),
+        ("basal_shaft", "basal", False),
+        ("basal_spine", "basal", True),
         ("apical_proximal_shaft", "apical_proximal", False),
         ("apical_proximal_spine", "apical_proximal", True),
-        # ("apical_distal_shaft", "apical_distal", False),
-        # ("apical_distal_spine", "apical_distal", True),
+        ("apical_distal_shaft", "apical_distal", False),
+        ("apical_distal_spine", "apical_distal", True),
     ]
 
     for figure_name, target_name, use_spines in site_specs:
         traces_by_condition = {}
         time = None
-        if target_name == "basal":
-            target_distances = BASAL_TARGETS_UM
-        elif target_name == "apical_proximal":
-            target_distances = APICAL_PROXIMAL_TARGETS_UM
-        elif target_name == "apical_distal":
-            target_distances = [APICAL_DISTAL_TARGET_UM]
-        else:
-            target_distances = [None]
 
-        for target_um in target_distances:
+        for syn_weight in SYN_WEIGHT_SWEEP:
             n_synapses = 1
-            cell = HPC("./", spine_density=SPINE_DENSITY)
+            cell = HPC(str(CODES_DIR), spine_density=SPINE_DENSITY)
             CELLS.append(cell)
             cell.add_full_spine(cell.HCell, 0.25, 1.35, 2.8, cell.HCell.soma[0].Ra)
 
             if target_name == "soma":
                 center_seg = cell.HCell.soma[0](0.5)
             elif target_name == "basal":
-                center_seg = cell.nearest_segment("basal", target_um)
+                center_seg = cell.nearest_segment("basal", BASAL_TARGET_UM)
             elif target_name == "apical_proximal":
-                center_seg = cell.nearest_segment("apical", target_um)
+                center_seg = cell.nearest_segment("apical", APICAL_PROXIMAL_TARGET_UM)
             else:
                 center_seg = cell.nearest_segment("apical", APICAL_DISTAL_TARGET_UM)
 
@@ -233,37 +229,15 @@ if args.task == "synapse":
             presyn.noise = 0
             NETSTIMS.append(presyn)
 
-            if n_synapses == 1:
-                if use_spines:
-                    class SingleSynConfig:
-                        SPINE_HEAD_X = 1
+            if use_spines:
+                class SingleSynConfig:
+                    SPINE_HEAD_X = 1
 
-                    target_segments = cell.fill_synapse_list_with_spine(
-                        [center_seg], SingleSynConfig
-                    )
-                else:
-                    target_segments = [center_seg]
+                target_segments = cell.fill_synapse_list_with_spine(
+                    [center_seg], SingleSynConfig
+                )
             else:
-                if use_spines:
-                    rd = h.Random(SEED)
-
-                    class ClusterConfig:
-                        SPINE_HEAD_X = 1
-                        CLUSTER_SIZE = n_synapses
-                        CLUSTER_L = CLUSTER_L_UM
-
-                    target_segments = cell.fill_clustered_synapses_list_with_spine(
-                        [center_seg], rd, ClusterConfig
-                    )
-                else:
-                    target_segments = []
-                    half_width = CLUSTER_L_UM / (2 * center_seg.sec.L)
-                    x_min = max(0, center_seg.x - half_width)
-                    x_max = min(1, center_seg.x + half_width)
-                    for j in range(n_synapses):
-                        frac = 0.5 if n_synapses == 1 else j / max(1, n_synapses - 1)
-                        x = x_min + frac * (x_max - x_min)
-                        target_segments.append(center_seg.sec(x))
+                target_segments = [center_seg]
 
             TARGET_SEGMENTS.extend(target_segments)
 
@@ -273,14 +247,14 @@ if args.task == "synapse":
                 syn.tau1 = SYN_TAU1
                 syn.tau2 = SYN_TAU2
                 con = h.NetCon(presyn, syn)
-                con.weight[0] = SYN_WEIGHT
+                con.weight[0] = syn_weight
                 SYNAPSES.append(syn)
                 CONNECTIONS.append(con)
 
-            # Record the same anatomical center site for all n. Synapses may be
-            # placed on nearby spine heads, but recording target_segments[0]
-            # would compare a spine head for n=1 with a dendritic shaft or a
-            # different spine for n>1, producing artificial pre-input offsets.
+            # Record the same anatomical center site for all weights. Synapses
+            # may be placed on nearby spine heads, but recording target_segments[0]
+            # would compare a spine head with a dendritic shaft, producing
+            # artificial pre-input offsets.
             record_seg = center_seg
             t_vec = h.Vector().record(h._ref_t)
             soma_v = h.Vector().record(cell.HCell.soma[0](0.5)._ref_v)
@@ -291,12 +265,7 @@ if args.task == "synapse":
             h.continuerun(h.tstop)
 
             time = np.array(t_vec)
-            if target_um is None:
-                condition_label = "single"
-            else:
-                condition_label = f"d={target_um:.0f}um"
-
-            traces_by_condition[condition_label] = {
+            traces_by_condition[f"w={syn_weight}"] = {
                 "soma": np.array(soma_v),
                 "input_site": np.array(input_v),
             }
@@ -305,10 +274,11 @@ if args.task == "synapse":
         plot_soma_and_dendrite(
             time,
             traces_by_condition,
-            output_dir / f"task_ii_synapse_{figure_name}.png",
+            output_dir / f"task_ii_synapse_{figure_name}.1png",
             f"Task ii: synaptic input at {figure_name}",
             "input_site",
         )
+
 
 if args.task == "bac":
     # Task iii: bAPs + clustered synaptic inputs.
@@ -321,7 +291,7 @@ if args.task == "bac":
         ("cluster_only", False, True),
         ("bAP_plus_cluster", True, True),
     ]:
-        cell = HPC("./", spine_density=SPINE_DENSITY)
+        cell = HPC(str(CODES_DIR), spine_density=SPINE_DENSITY)
         CELLS.append(cell)
         cell.add_full_spine(cell.HCell, 0.25, 1.35, 2.8, cell.HCell.soma[0].Ra)
 
