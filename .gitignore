@@ -1,7 +1,6 @@
 # ===========================
 # NEURON Simulation Files
 # ===========================
-# Compiled NEURON mechanisms
 *.o
 *.c
 *.so
@@ -78,3 +77,30 @@ Thumbs.db
 *.tmp
 *.bak
 *.backup
+
+# ===========================
+# Large/Compressed Files
+# ===========================
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+
+# ===========================
+# Documentation/Markdown
+# ===========================
+*.md
+README*
+LICENSE
+
+# ===========================
+# Generated Figures (keep only required ones)
+# ===========================
+# Ignore sweep/exploration figures
+Projects/One/Phase_2/Project_Code/Question_2/fig/
+Projects/Two/Phase_2/codes/morphology_domains.png
+
+# Ignore temporary/sweep images
+*_tmp*.png
+*_tmp*.jpg
