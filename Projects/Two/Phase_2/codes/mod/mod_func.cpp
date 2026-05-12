@@ -3,20 +3,20 @@
 #define IMPORT extern __declspec(dllimport)
 IMPORT int nrnmpi_myid, nrn_nobanner_;
 
-extern void _CaDynamics_E2_reg();
-extern void _Ca_HVA_reg();
-extern void _Ca_LVAst_reg();
-extern void _Ih_reg();
-extern void _Im_reg();
-extern void _K_Pst_reg();
-extern void _K_Tst_reg();
-extern void _NMDA_reg();
-extern void _NaTa_t_reg();
-extern void _Nap_Et2_reg();
-extern void _SK_E2_reg();
-extern void _SKv3_1_reg();
+extern "C" void _CaDynamics_E2_reg();
+extern "C" void _Ca_HVA_reg();
+extern "C" void _Ca_LVAst_reg();
+extern "C" void _Ih_reg();
+extern "C" void _Im_reg();
+extern "C" void _K_Pst_reg();
+extern "C" void _K_Tst_reg();
+extern "C" void _NMDA_reg();
+extern "C" void _NaTa_t_reg();
+extern "C" void _Nap_Et2_reg();
+extern "C" void _SK_E2_reg();
+extern "C" void _SKv3_1_reg();
 
-void modl_reg(){
+extern "C" void modl_reg(){
 	//nrn_mswindll_stdio(stdin, stdout, stderr);
     if (!nrn_nobanner_) if (nrnmpi_myid < 1) {
 	fprintf(stderr, "Additional mechanisms from files\n");

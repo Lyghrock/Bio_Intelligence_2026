@@ -175,6 +175,27 @@ if args.task == "bap":
         }
         clear_neuron_refs()
 
+    np.savez(
+        output_dir / "task_i_bap_proximal_na_traces.npz",
+        time=time,
+        control_soma=traces_by_condition["control"]["soma"],
+        control_apical=traces_by_condition["control"]["apical_oblique"],
+        removed_soma=traces_by_condition["proximal_apical_Na_removed"]["soma"],
+        removed_apical=traces_by_condition["proximal_apical_Na_removed"]["apical_oblique"],
+    )
+    print(f"saved traces: {output_dir / 'task_i_bap_proximal_na_traces.npz'}")
+
+    analysis_window = (time >= SOMA_STIM_DELAY - 20) & (time <= SOMA_STIM_DELAY + 160)
+    control_apical_peak = traces_by_condition["control"]["apical_oblique"][analysis_window].max()
+    removed_apical_peak = traces_by_condition["proximal_apical_Na_removed"]["apical_oblique"][
+        analysis_window
+    ].max()
+    print(
+        "apical peak Vm (mV): "
+        f"control={control_apical_peak:.2f}, "
+        f"proximal_apical_Na_removed={removed_apical_peak:.2f}"
+    )
+
     plot_soma_and_dendrite(
         time,
         traces_by_condition,
