@@ -60,9 +60,9 @@ SOMA_STIM_AMP = 0.45
 
 
 # Excitatory Exp2Syn parameters used in the synaptic-input scaffold.
-SYN_START = 150
+SYN_START = 100
 SYN_START_BAC = 205
-SYN_WEIGHT = 0.00073
+SYN_WEIGHT = 0.6
 SYN_WEIGHT_BAC = 0.0015
 SYN_TAU1 = 0.3
 SYN_TAU2 = 1.8
@@ -77,6 +77,7 @@ APICAL_DISTAL_TARGET_UM = 650
 BASAL_TARGET_UM = 120
 APICAL_PROXIMAL_TARGET_UM = 120
 CLUSTER_SIZES = [1, 5, 10, 20]
+SYN_WEIGHT_SWEEP = [10,0.51,0.5,0.046,0.045,0.01]
 
 
 def plot_soma_and_dendrite(time, traces_by_condition, output_path, title, dendrite_label):
@@ -186,10 +187,10 @@ if args.task == "synapse":
     h.tstop = 350
     site_specs = [
         ("soma", "soma", False),
-        ("basal_shaft", "basal", False),
-        ("basal_spine", "basal", True),
-        ("apical_proximal_shaft", "apical_proximal", False),
-        ("apical_proximal_spine", "apical_proximal", True),
+        # ("basal_shaft", "basal", False),
+        # ("basal_spine", "basal", True),
+        # ("apical_proximal_shaft", "apical_proximal", False),
+        # ("apical_proximal_spine", "apical_proximal", True),
         ("apical_distal_shaft", "apical_distal", False),
         ("apical_distal_spine", "apical_distal", True),
     ]
@@ -288,7 +289,7 @@ if args.task == "synapse":
         plot_soma_and_dendrite(
             time,
             traces_by_condition,
-            output_dir / f"task_ii_synapse_{figure_name}.png",
+            output_dir / f"task_ii_synapse_{figure_name}2.png",
             f"Task ii: synaptic input at {figure_name}",
             "input_site",
         )

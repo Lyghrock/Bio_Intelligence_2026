@@ -100,7 +100,11 @@ LICENSE
 # Ignore sweep/exploration figures
 Projects/One/Phase_2/Project_Code/Question_2/fig/
 Projects/Two/Phase_2/codes/morphology_domains.png
+Project_Code/Two/Phase_2/figures
+
 
 # Ignore temporary/sweep images
 *_tmp*.png
 *_tmp*.jpg
+
+!Projects/Presentation/frequency_coding/README.md
