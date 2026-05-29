@@ -30,16 +30,15 @@ def main():
     print("-" * 32)
 
     for f in [1, 2, 5, 10, 20, 40]:
-        t, v_soma, v_dend = model.inject_sinusoidal(freq=f, amp=0.1, duration=1500)
-        skip = int(200 / 0.025)
-        v_ss = v_soma[skip:]
-        amp = (np.max(v_ss) - np.min(v_ss)) / 2
+        amp, _, _ = model.inject_single_frequency(freq=f, amp=0.02, n_cycles=10)
         print(f"{f:>10.0f} Hz {amp:>16.2f}")
 
     # SNR improvement test
     print("\nTest: SNR improvement (5 Hz signal + 30-100 Hz noise)")
-    result = model.inject_noisy_signal(duration=3000, signal_freq=5, snr_db=-3.0)
-    snr_data = model.plot_snr_improvement(result)
+    result = model.inject_noisy_signal(duration=400, signal_freq=5, snr_db=-3.0)
+    snr_data = model.analyze_filtering_result(result)
+    model.plot_signal_filtering_results(result, snr_data)
+    model.plot_snr_improvement(result, snr_data)
 
     print(f"\n  Input SNR:  {snr_data['snr_in']:.1f} dB")
     print(f"  Output SNR: {snr_data['snr_out']:.1f} dB")

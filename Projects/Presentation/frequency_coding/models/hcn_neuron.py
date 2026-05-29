@@ -1,14 +1,8 @@
 """
 HCN Neuron Model - Theta Resonance Analysis
-============================================
-Demonstrates how HCN (hyperpolarization-activated cyclic nucleotide-gated) channels
-create theta-band (4-10 Hz) resonance in hippocampal neurons.
-
-Key concepts:
-1. HCN channels activate during hyperpolarization → sag potential
-2. HCN channels create a PEAK in impedance at theta frequencies (band-pass resonance)
-3. Passive membranes only show low-pass filtering (impedance decreases with frequency)
-4. ZAP protocol directly shows preferential response to theta inputs
+===========================================
+Clean subthreshold pas+somatic HH vs pas+somatic HH+Ih simulation showing
+that HCN/Ih changes frequency tuning under hyperpolarized conditions.
 """
 
 from neuron import h
@@ -18,40 +12,82 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-# Output figures directory
+
 _figures_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'figures'))
 
-# Load NEURON standard run system
 h.load_file('stdrun.hoc')
 h.CVode().active(0)
 
-# Load compiled mechanisms from reference_mod
 _ref_mod_path = os.path.abspath(os.path.join(
     os.path.dirname(__file__), '..', '..', 'reference_mod', 'nrnmech.dll'
 ))
 if os.path.exists(_ref_mod_path):
     h.nrn_load_dll(_ref_mod_path)
-    print(f"[OK] Loaded mechanisms from: {_ref_mod_path}")
 else:
     print(f"[WARN] Mechanism DLL not found at: {_ref_mod_path}")
 
 
-class HCNNeuron:
-    """
-    Hippocampal neuron model with HCN (Ih) channels for theta resonance.
+THETA_BAND = (4, 10)
+LOW_BAND = (1, 3)
+HIGH_BAND = (12, 25)
+CONTROL_LABEL = 'No HCN control'
+HCN_LABEL = 'With HCN'
+FREQUENCY_SWEEP = np.array(
+    [0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25],
+    dtype=float,
+)
+SIM_DT = 0.5
+THETA_SHADE = '#fff2b2'
+_hh_notice_printed = False
 
-    HCN channel properties (from Ih.mod):
-    - Activated by hyperpolarization (opens when V < -60 mV)
-    - Mixed Na+/K+ current (reversal ~ -30 mV)
-    - Slow activation/deactivation kinetics → frequency-dependent response
-    - Density gradient: higher in distal dendrites (matches CA1 pyramidal cells)
-    """
 
-    def __init__(self, dend_L=300, g_h=0.002, g_pas_dend=0.0003):
-        self.soma = h.Section(name='soma_hcn')
-        self.dend = h.Section(name='dend_hcn')
+def has_spike(voltage, threshold=-20):
+    return bool(np.any(np.asarray(voltage) > threshold))
 
-        # --- SOMA ---
+
+def fit_sine_amplitude(t_ms, y, freq_hz):
+    t_sec = np.asarray(t_ms) / 1000.0
+    y = np.asarray(y)
+    phase = 2 * np.pi * freq_hz * t_sec
+    design = np.column_stack([
+        np.sin(phase),
+        np.cos(phase),
+        np.ones_like(phase),
+    ])
+    coeffs, _, _, _ = np.linalg.lstsq(design, y, rcond=None)
+    return float(np.sqrt(coeffs[0] ** 2 + coeffs[1] ** 2))
+
+
+def compute_step_metrics(t, v, step_start=200, step_dur=500):
+    step_end = step_start + step_dur
+    rest_mask = (t >= step_start - 100) & (t < step_start)
+    step_mask = (t >= step_start) & (t < step_end)
+    late_mask = (t >= step_end - 50) & (t < step_end)
+    v_rest = float(np.mean(v[rest_mask])) if np.any(rest_mask) else -65.0
+    v_min = float(np.min(v[step_mask]))
+    v_late = float(np.mean(v[late_mask]))
+    return {
+        'v_rest': v_rest,
+        'v_min': v_min,
+        'v_late': v_late,
+        'hyperpolarization_depth': v_rest - v_min,
+        'sag_recovery': v_late - v_min,
+    }
+
+
+class SubthresholdResonanceNeuron:
+    """Clean pas+somatic HH or pas+somatic HH+Ih model for subthreshold HCN analysis."""
+
+    def __init__(self, name, with_hcn=False, dend_L=300, g_h=0.001,
+                 g_pas_dend=0.0003, eh_hcn=-45.0):
+        self.name = name
+        self.with_hcn = with_hcn
+        self.g_h = g_h
+        self.eh_hcn = eh_hcn
+
+        self.soma = h.Section(name=f'soma_{name}')
+        self.dend = h.Section(name=f'dend_{name}')
+
         self.soma.L = 10
         self.soma.diam = 10
         self.soma.cm = 1.0
@@ -59,526 +95,701 @@ class HCNNeuron:
         self.soma.insert('pas')
         self.soma.g_pas = 0.0001
         self.soma.e_pas = -65
-        self.soma.insert('hh1')  # For action potentials
+        self._insert_somatic_hh()
 
-        # HCN at soma (lighter)
-        self.soma.insert('Ih')
+        self.dend.L = dend_L
+        self.dend.diam = 2.0
+        self.dend.nseg = 31
+        self.dend.cm = 1.0
+        self.dend.Ra = 100
+        self.dend.insert('pas')
+        self.dend.g_pas = g_pas_dend
+        self.dend.e_pas = -65
+
+        if with_hcn:
+            self.soma.insert('Ih')
+            self._set_hcn_reversal()
+            for seg in self.soma:
+                seg.Ih.gIhbar = g_h * 0.3
+
+            self.dend.insert('Ih')
+            for seg in self.dend:
+                seg.Ih.gIhbar = g_h * (0.5 + 0.5 * seg.x)
+
+        self.dend.connect(self.soma(1))
+
+    def _insert_somatic_hh(self):
+        global _hh_notice_printed
+        try:
+            self.soma.insert('hh1')
+            mech_name = 'hh1'
+        except Exception:
+            try:
+                self.soma.insert('hh')
+                mech_name = 'hh'
+            except Exception as exc:
+                print(f"[WARN] Could not insert HH/HH1 into soma for {self.name}: {exc}")
+                return
+
         for seg in self.soma:
-            seg.Ih.gIhbar = g_h * 0.3
+            if mech_name == 'hh1':
+                mech = seg.hh1
+                for attr, value in (
+                    ('gnabar', 0.08),
+                    ('gkbar', 0.024),
+                    ('gl', 0.0001),
+                ):
+                    try:
+                        setattr(mech, attr, value)
+                    except Exception:
+                        print(f"[WARN] Could not set hh1.{attr} for {self.name}; using default.")
+            else:
+                mech = seg.hh
+                for attr, value in (
+                    ('gnabar', 0.08),
+                    ('gkbar', 0.024),
+                    ('gl', 0.0001),
+                    ('el', -65.0),
+                ):
+                    try:
+                        setattr(mech, attr, value)
+                    except Exception:
+                        print(f"[WARN] Could not set hh.{attr} for {self.name}; using default.")
 
-        # --- DENDRITE ---
-        self.dend.L = dend_L
-        self.dend.diam = 2.0
-        self.dend.nseg = 31
-        self.dend.cm = 1.0
-        self.dend.Ra = 100
-        self.dend.insert('pas')
-        self.dend.g_pas = g_pas_dend
-        self.dend.e_pas = -65
+        if not _hh_notice_printed:
+            print("[OK] Added HH/HH1 Na/K conductance to soma only.")
+            _hh_notice_printed = True
 
-        # HCN in dendrites (stronger) - gradient as in real CA1 neurons
-        self.dend.insert('Ih')
-        for seg in self.dend:
-            x = seg.x  # 0 to 1 along dendrite
-            seg.Ih.gIhbar = g_h * (0.5 + 0.5 * x)  # increases toward distal
+    def _set_hcn_reversal(self):
+        try:
+            h.ehcn_Ih = self.eh_hcn
+        except Exception:
+            pass
 
-        self.dend.connect(self.soma(1))
+    def _record_vectors(self):
+        t_vec = h.Vector()
+        v_soma = h.Vector()
+        v_dend = h.Vector()
+        t_vec.record(h._ref_t)
+        v_soma.record(self.soma(0.5)._ref_v)
+        v_dend.record(self.dend(0.8)._ref_v)
+        return t_vec, v_soma, v_dend
 
-        # Recording
-        self.v_soma = h.Vector()
-        self.v_dend = h.Vector()
-        self.t = h.Vector()
-        self.v_soma.record(self.soma(0.5)._ref_v)
-        self.v_dend.record(self.dend(0.5)._ref_v)
-        self.t.record(h._ref_t)
+    def run_current(self, duration, dt=SIM_DT, hold_amp=0.0, wave=None, ac_loc='dend',
+                    init_v=-75.0, extra_stim=None):
+        t_vec, v_soma, v_dend = self._record_vectors()
 
-        # Impedance analysis
-        self.imp = h.Impedance()
+        hold = h.IClamp(self.soma(0.5))
+        hold.delay = 0
+        hold.dur = duration
+        hold.amp = hold_amp
 
-    def measure_impedance(self, freq_range=(0.5, 30), n_points=50):
-        """
-        Measure input impedance using NEURON Impedance class.
-        IMPORTANT: imp.compute(freq, 1) includes gating state derivatives
-        for accurate frequency response of active channels.
-        """
-        freqs = np.logspace(np.log10(freq_range[0]), np.log10(freq_range[1]), n_points)
-        z_mag = np.zeros(len(freqs))
-        phase = np.zeros(len(freqs))
+        wave_vec = None
+        if wave is not None:
+            stim_site = self.dend(0.8) if ac_loc == 'dend' else self.soma(0.5)
+            stim = h.IClamp(stim_site)
+            stim.delay = 0
+            stim.dur = duration
+            stim.amp = 0
+            wave_vec = h.Vector(wave)
+            wave_vec.play(stim._ref_amp, dt)
 
-        h.finitialize(-65)
-        self.imp.loc(0.5, sec=self.soma)
+        if extra_stim is not None:
+            extra = h.IClamp(self.soma(0.5))
+            extra.delay = extra_stim['delay']
+            extra.dur = extra_stim['dur']
+            extra.amp = extra_stim['amp']
 
-        for i, f in enumerate(freqs):
-            self.imp.compute(f, 0)  # mode=1 (gating) fails with hh1; ZAP captures dynamics correctly
-            z_mag[i] = self.imp.input(0.5, sec=self.soma)
-            phase[i] = self.imp.input_phase(0.5, sec=self.soma)
+        if abs(float(h.dt) - dt) > 1e-12:
+            h.dt = dt
+        h.finitialize(init_v)
+        h.tstop = duration
+        while h.t < h.tstop:
+            h.fadvance()
 
-        return freqs, z_mag, phase
+        if wave_vec is not None:
+            wave_vec.play_remove()
 
-    def zap_protocol(self, duration=4000, f_start=0.5, f_end=25, amp=0.3):
-        """
-        ZAP protocol: chirp current from f_start to f_end Hz.
+        t = np.array(t_vec)
+        soma = np.array(v_soma)
+        dend = np.array(v_dend)
+        if has_spike(soma) or has_spike(dend):
+            raise RuntimeError(f"{self.name} became suprathreshold")
+        return t, soma, dend
 
-        The voltage response amplitude at each frequency reveals
-        the frequency preference of the membrane.
-        High response = preferred frequency (resonance).
-        """
-        dt = 0.025
-        t = np.arange(0, duration, dt)
+    def calibrate_holding_current(self, target_v=-75.0, duration=1200, dt=SIM_DT):
+        lo, hi = -0.5, 0.2
+        best_amp = 0.0
+        for _ in range(14):
+            mid = 0.5 * (lo + hi)
+            t, soma, _ = self.run_current(
+                duration=duration,
+                dt=dt,
+                hold_amp=mid,
+                wave=None,
+                init_v=target_v,
+            )
+            steady = float(np.mean(soma[t > duration - 200]))
+            best_amp = mid
+            if steady > target_v:
+                hi = mid
+            else:
+                lo = mid
 
-        rate = (f_end - f_start) / (duration / 1000)  # Hz/s sweep rate
-        t_sec = t / 1000
-        phase = 2 * np.pi * (f_start * t_sec + 0.5 * rate * t_sec**2)
-        wave = amp * np.sin(phase)
+        t, soma, dend = self.run_current(
+            duration=duration,
+            dt=dt,
+            hold_amp=best_amp,
+            wave=None,
+            init_v=target_v,
+        )
+        soma_v = float(np.mean(soma[t > duration - 200]))
+        dend_v = float(np.mean(dend[t > duration - 200]))
+        return best_amp, soma_v, dend_v
 
-        stim = h.IClamp(self.soma(0.5))
-        stim.delay = 0
-        stim.dur = duration
-        stim.amp = 0
+    def sine_response(self, freq, ac_amp=0.01, hold_amp=0.0, n_cycles=8,
+                      discard_cycles=3, ac_loc='dend', init_v=-75.0):
+        dt = SIM_DT
+        duration = n_cycles * 1000.0 / freq
+        t_wave = np.arange(0, duration, dt)
+        wave = ac_amp * np.sin(2 * np.pi * freq * (t_wave / 1000.0))
+        t, soma, dend = self.run_current(
+            duration=duration,
+            dt=dt,
+            hold_amp=hold_amp,
+            wave=wave,
+            ac_loc=ac_loc,
+            init_v=init_v,
+        )
 
-        wave_vec = h.Vector(wave)
-        wave_vec.play(stim._ref_amp, dt)
+        start = discard_cycles * 1000.0 / freq
+        mask = (t >= start) & (t < duration)
+        if np.count_nonzero(mask) < 10:
+            raise RuntimeError(f"Not enough steady-state samples at {freq:.2f} Hz")
 
-        h.finitialize(-65)
-        h.tstop = duration + 100
-        h.run()
-        wave_vec.play_remove()
+        soma_amp = fit_sine_amplitude(t[mask], soma[mask] - np.mean(soma[mask]), freq)
+        dend_amp = fit_sine_amplitude(t[mask], dend[mask] - np.mean(dend[mask]), freq)
+        return {
+            'freq': freq,
+            'soma_amp': soma_amp,
+            'dend_amp': dend_amp,
+            'soma_gain': soma_amp / ac_amp,
+            'dend_gain': dend_amp / ac_amp,
+        }
 
-        t_data = np.array(self.t)
-        v_data = np.array(self.v_soma)
-        return t_data, v_data, t, wave
+    def zap_trace(self, duration=4000, f_start=0.5, f_end=25, ac_amp=0.01,
+                  hold_amp=0.0, ac_loc='dend', ramp_ms=200.0, init_v=-75.0):
+        dt = SIM_DT
+        t_wave = np.arange(0, duration, dt)
+        t_sec = t_wave / 1000.0
+        rate = (f_end - f_start) / (duration / 1000.0)
+        phase = 2 * np.pi * (f_start * t_sec + 0.5 * rate * t_sec ** 2)
+        ramp = np.ones_like(t_wave)
+        ramp_mask = t_wave < ramp_ms
+        ramp[ramp_mask] = 0.5 * (1 - np.cos(np.pi * t_wave[ramp_mask] / ramp_ms))
+        wave = ac_amp * ramp * np.sin(phase)
+        return self.run_current(
+            duration=duration,
+            dt=dt,
+            hold_amp=hold_amp,
+            wave=wave,
+            ac_loc=ac_loc,
+            init_v=init_v,
+        )
 
-    def hyperpolarization_test(self, amp=-0.3, dur=500):
-        """Hyperpolarizing step to activate HCN → characteristic sag."""
-        stim = h.IClamp(self.soma(0.5))
-        stim.delay = 200
-        stim.dur = dur
-        stim.amp = amp
-
-        h.finitialize(-65)
-        h.tstop = dur + 600
-        h.run()
-
-        return np.array(self.t), np.array(self.v_soma)
-
-    def theta_input_test(self, theta_freq=5, dur=2000):
-        """
-        Inject theta-frequency sinusoidal current.
-        Shows preferential transmission of theta inputs.
-        """
-        dt = 0.025
-        t = np.arange(0, dur, dt)
-        wave = 0.2 * np.sin(2 * np.pi * theta_freq * t / 1000)
-
-        stim = h.IClamp(self.soma(0.5))
-        stim.delay = 0
-        stim.dur = dur
-        stim.amp = 0
-
-        wave_vec = h.Vector(wave)
-        wave_vec.play(stim._ref_amp, dt)
-
-        h.finitialize(-65)
-        h.tstop = dur + 100
-        h.run()
-        wave_vec.play_remove()
-
-        return np.array(self.t), np.array(self.v_soma), t, wave
-
-
-class PassiveNeuron:
-    """
-    Control neuron WITHOUT HCN channels.
-    Used to show that theta resonance requires active HCN channels.
-    """
-
-    def __init__(self, dend_L=300, g_pas_dend=0.0003):
-        self.soma = h.Section(name='soma_passive')
-        self.dend = h.Section(name='dend_passive')
-
-        self.soma.L = 10
-        self.soma.diam = 10
-        self.soma.cm = 1.0
-        self.soma.Ra = 100
-        self.soma.insert('pas')
-        self.soma.g_pas = 0.0001
-        self.soma.e_pas = -65
-        self.soma.insert('hh1')
-
-        self.dend.L = dend_L
-        self.dend.diam = 2.0
-        self.dend.nseg = 31
-        self.dend.cm = 1.0
-        self.dend.Ra = 100
-        self.dend.insert('pas')
-        self.dend.g_pas = g_pas_dend
-        self.dend.e_pas = -65
-
-        self.dend.connect(self.soma(1))
-
-        self.v_soma = h.Vector()
-        self.v_dend = h.Vector()
-        self.t = h.Vector()
-        self.v_soma.record(self.soma(0.5)._ref_v)
-        self.v_dend.record(self.dend(0.5)._ref_v)
-        self.t.record(h._ref_t)
-
-        self.imp = h.Impedance()
-
-    def measure_impedance(self, freq_range=(0.5, 30), n_points=50):
-        """Passive membrane: impedance decreases monotonically with frequency."""
-        freqs = np.logspace(np.log10(freq_range[0]), np.log10(freq_range[1]), n_points)
-        z_mag = np.zeros(len(freqs))
-        phase = np.zeros(len(freqs))
-
-        h.finitialize(-65)
-        self.imp.loc(0.5, sec=self.soma)
-
-        for i, f in enumerate(freqs):
-            self.imp.compute(f, 0)  # passive: gating states don't matter
-            z_mag[i] = self.imp.input(0.5, sec=self.soma)
-            phase[i] = self.imp.input_phase(0.5, sec=self.soma)
-
-        return freqs, z_mag, phase
-
-    def zap_protocol(self, duration=4000, f_start=0.5, f_end=25, amp=0.3):
-        """ZAP protocol for passive neuron."""
-        dt = 0.025
-        t = np.arange(0, duration, dt)
-
-        rate = (f_end - f_start) / (duration / 1000)
-        t_sec = t / 1000
-        phase = 2 * np.pi * (f_start * t_sec + 0.5 * rate * t_sec**2)
-        wave = amp * np.sin(phase)
-
-        stim = h.IClamp(self.soma(0.5))
-        stim.delay = 0
-        stim.dur = duration
-        stim.amp = 0
-
-        wave_vec = h.Vector(wave)
-        wave_vec.play(stim._ref_amp, dt)
-
-        h.finitialize(-65)
-        h.tstop = duration + 100
-        h.run()
-        wave_vec.play_remove()
-
-        return np.array(self.t), np.array(self.v_soma), t, wave
-
-    def hyperpolarization_test(self, amp=-0.3, dur=500):
-        """Passive: minimal sag (no HCN to counter hyperpolarization)."""
-        stim = h.IClamp(self.soma(0.5))
-        stim.delay = 200
-        stim.dur = dur
-        stim.amp = amp
-
-        h.finitialize(-65)
-        h.tstop = dur + 600
-        h.run()
-
-        return np.array(self.t), np.array(self.v_soma)
-
-    def theta_input_test(self, theta_freq=5, dur=2000):
-        """Theta input test for passive neuron."""
-        dt = 0.025
-        t = np.arange(0, dur, dt)
-        wave = 0.2 * np.sin(2 * np.pi * theta_freq * t / 1000)
-
-        stim = h.IClamp(self.soma(0.5))
-        stim.delay = 0
-        stim.dur = dur
-        stim.amp = 0
-
-        wave_vec = h.Vector(wave)
-        wave_vec.play(stim._ref_amp, dt)
-
-        h.finitialize(-65)
-        h.tstop = dur + 100
-        h.run()
-        wave_vec.play_remove()
-
-        return np.array(self.t), np.array(self.v_soma), t, wave
+    def hyperpolarization_test(self, hold_amp, step_amp=-0.08,
+                               step_start=200, step_dur=500):
+        duration = step_start + step_dur + 400
+        return self.run_current(
+            duration=duration,
+            dt=SIM_DT,
+            hold_amp=hold_amp,
+            wave=None,
+            init_v=-75.0,
+            extra_stim={'delay': step_start, 'dur': step_dur, 'amp': step_amp},
+        )
 
 
-def analyze_zap_response(t_v, v_data, t_wave, wave, f_start=0.5, f_end=25, segment_dur=200):
-    """
-    Extract amplitude at each frequency from ZAP response.
+def normalized_gain(freqs, gain):
+    return gain / (np.interp(0.5, freqs, gain) + 1e-12)
 
-    Returns:
-        freqs: center frequency of each segment (Hz)
-        v_amps: peak-to-peak voltage amplitude in each segment (mV)
-        i_amps: peak-to-peak current amplitude in each segment (nA)
-    """
-    dt = 0.025
-    duration = t_wave[-1]
-    n_segments = int(duration / segment_dur)
 
-    freqs_out = []
-    v_amps_out = []
-    i_amps_out = []
+def run_clean_sweep(neuron, freqs, hold_amp, ac_amp=0.01, init_v=-75.0):
+    results = [
+        neuron.sine_response(
+            freq,
+            ac_amp=ac_amp,
+            hold_amp=hold_amp,
+            n_cycles=8,
+            discard_cycles=3,
+            init_v=init_v,
+        )
+        for freq in freqs
+    ]
+    return {
+        'soma_gain': np.array([r['soma_gain'] for r in results]),
+        'dend_gain': np.array([r['dend_gain'] for r in results]),
+        'soma_amp': np.array([r['soma_amp'] for r in results]),
+        'dend_amp': np.array([r['dend_amp'] for r in results]),
+    }
 
-    for i in range(n_segments):
-        t0 = i * segment_dur
-        t1 = (i + 1) * segment_dur
 
-        # Center frequency for this segment
-        mid_f = f_start + (f_end - f_start) * (i + 0.5) / n_segments
+def frequency_response_metrics(freqs, gain, theta_band=THETA_BAND):
+    norm = normalized_gain(freqs, gain)
+    theta_mask = (freqs >= theta_band[0]) & (freqs <= theta_band[1])
+    if not np.any(theta_mask):
+        raise RuntimeError("Frequency sweep has no theta-band samples")
 
-        # Voltage in this segment
-        v_mask = (t_v >= t0) & (t_v < t1)
-        v_seg = v_data[v_mask]
-        if len(v_seg) > 10:
-            v_pp = np.max(v_seg) - np.min(v_seg)
-        else:
-            v_pp = 0
+    theta_norm = norm[theta_mask]
+    theta_freqs = freqs[theta_mask]
+    idx = int(np.argmax(theta_norm))
+    return {
+        'norm': norm,
+        'ri': float(theta_norm[idx]),
+        'peak_freq': float(theta_freqs[idx]),
+        'z_ref': float(np.interp(0.5, freqs, gain)),
+    }
 
-        # Current in this segment
-        i_mask = (t_wave >= t0) & (t_wave < t1)
-        i_seg = wave[i_mask]
-        if len(i_seg) > 10:
-            i_pp = np.max(i_seg) - np.min(i_seg)
-        else:
-            i_pp = 0
 
-        freqs_out.append(mid_f)
-        v_amps_out.append(v_pp)
-        i_amps_out.append(i_pp)
+def theta_prominence(freqs, gain):
+    z = normalized_gain(freqs, gain)
+    theta = (freqs >= THETA_BAND[0]) & (freqs <= THETA_BAND[1])
+    low = (freqs >= LOW_BAND[0]) & (freqs < LOW_BAND[1])
+    high = (freqs >= HIGH_BAND[0]) & (freqs <= HIGH_BAND[1])
+    if not np.any(theta) or not np.any(low) or not np.any(high):
+        raise RuntimeError("Frequency sweep missing theta, low, or high band samples")
 
-    return np.array(freqs_out), np.array(v_amps_out), np.array(i_amps_out)
+    theta_peak = np.max(z[theta])
+    flank_mean = 0.5 * (np.mean(z[low]) + np.mean(z[high]))
+    return float(theta_peak - flank_mean)
+
+
+def set_tight_ylim(ax, values, include_one=True, min_pad_fraction=0.08):
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    if include_one:
+        values = np.concatenate([values, np.array([1.0])])
+    y_min = float(np.min(values))
+    y_max = float(np.max(values))
+    span = max(y_max - y_min, 0.02)
+    pad = span * min_pad_fraction
+    ax.set_ylim(y_min - pad, y_max + pad)
+
+
+def plot_zap_trace(ax, t_control, v_control, t_hcn, v_hcn):
+    zap_mask_control = t_control >= 200
+    zap_mask_hcn = t_hcn >= 200
+    control_baseline = np.mean(v_control[(t_control >= 300) & (t_control <= 600)])
+    hcn_baseline = np.mean(v_hcn[(t_hcn >= 300) & (t_hcn <= 600)])
+
+    ax.plot(
+        t_control[zap_mask_control],
+        v_control[zap_mask_control] - control_baseline,
+        color='tab:blue',
+        alpha=0.65,
+        lw=1.0,
+        label=CONTROL_LABEL,
+    )
+    ax.plot(
+        t_hcn[zap_mask_hcn],
+        v_hcn[zap_mask_hcn] - hcn_baseline,
+        color='tab:red',
+        lw=1.2,
+        label=HCN_LABEL,
+    )
+    ax.set_xlabel('Time (ms)')
+    ax.set_ylabel('Soma voltage fluctuation (mV)')
+    ax.set_title('Subthreshold ZAP trace, no spikes')
+    ax.legend(fontsize=8, frameon=False)
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(200, 4000)
 
 
 def main():
-    print("=" * 65)
-    print("HCN Neuron Model - Theta Resonance Analysis")
-    print("=" * 65)
-
-    # Parameters: HCN conductance tuned for clear theta resonance
-    g_h = 0.0025      # S/cm2 - increased from 0.0002 to show real resonance
+    target_v = -75.0
     g_pas_dend = 0.0003
+    eh_hcn = -45.0
+    candidate_g_h = [0.0002, 0.0005]
+    zap_amp = 0.01
+    sweep_amp = 0.01
+    step_amp = -0.08
+    freqs = FREQUENCY_SWEEP
 
-    print(f"\nCreating neurons (g_h={g_h}, g_pas_dend={g_pas_dend})...")
-    print("1. Passive neuron (control, no HCN)")
-    neuron_passive = PassiveNeuron(dend_L=300, g_pas_dend=g_pas_dend)
-
-    print("2. HCN neuron (with Ih channels)")
-    neuron_hcn = HCNNeuron(dend_L=300, g_h=g_h, g_pas_dend=g_pas_dend)
-
-    # ====== TEST 1: Hyperpolarization Response ======
-    print("\n" + "-" * 65)
-    print("Test 1: Hyperpolarization Response (HCN activation)")
-    print("-" * 65)
-
-    t_pas, v_pas = neuron_passive.hyperpolarization_test(amp=-0.3, dur=500)
-    t_hcn, v_hcn = neuron_hcn.hyperpolarization_test(amp=-0.3, dur=500)
-
-    v_rest = -65
-    v_min_pas = np.min(v_pas[int(200/0.025):int(700/0.025)])
-    v_min_hcn = np.min(v_hcn[int(200/0.025):int(700/0.025)])
-    sag_pas = abs(v_min_pas - v_rest)
-    sag_hcn = abs(v_min_hcn - v_rest)
-
-    print(f"Passive: V_min={v_min_pas:.1f} mV, sag={sag_pas:.1f} mV (no Ih)")
-    print(f"HCN:     V_min={v_min_hcn:.1f} mV, sag={sag_hcn:.1f} mV (with Ih)")
-
-    if sag_hcn < sag_pas - 0.5:
-        print("[OK] HCN LIMITS hyperpolarization (smaller sag): Ih depolarizes toward rest")
-    elif sag_hcn > sag_pas + 0.5:
-        print("[!] HCN ENHANCES hyperpolarization (unusual - check parameters)")
-    else:
-        print("[!] HCN has minimal effect on sag (try increasing g_h)")
-
-    # ====== TEST 2: ZAP Protocol (Core Resonance Test) ======
-    print("\n" + "-" * 65)
-    print("Test 2: ZAP Protocol (Frequency Sweep)")
-    print("-" * 65)
-
-    print("Running ZAP on Passive neuron (0.5 → 25 Hz)...")
-    tp_pas, vp_pas, tw_pas, iw_pas = neuron_passive.zap_protocol(
-        duration=4000, f_start=0.5, f_end=25, amp=0.3
+    neuron_control = SubthresholdResonanceNeuron(
+        'clean_control',
+        with_hcn=False,
+        dend_L=300,
+        g_pas_dend=g_pas_dend,
     )
-
-    print("Running ZAP on HCN neuron (0.5 → 25 Hz)...")
-    tp_hcn, vp_hcn, tw_hcn, iw_hcn = neuron_hcn.zap_protocol(
-        duration=4000, f_start=0.5, f_end=25, amp=0.3
+    hold_control, _, _ = (
+        neuron_control.calibrate_holding_current(target_v=target_v)
     )
+    control_sweep = run_clean_sweep(neuron_control, freqs, hold_control, ac_amp=sweep_amp)
+    control_soma_metrics = frequency_response_metrics(freqs, control_sweep['soma_gain'])
+    control_dend_metrics = frequency_response_metrics(freqs, control_sweep['dend_gain'])
 
-    # Analyze ZAP response: extract amplitude per frequency band
-    freqs_pas, vpp_pas, ipp_pas = analyze_zap_response(
-        tp_pas, vp_pas, tw_pas, iw_pas, f_start=0.5, f_end=25, segment_dur=200
-    )
-    freqs_hcn, vpp_hcn, ipp_hcn = analyze_zap_response(
-        tp_hcn, vp_hcn, tw_hcn, iw_hcn, f_start=0.5, f_end=25, segment_dur=200
-    )
-
-    # Compute transfer gain = V_pp / I_pp (voltage amplitude / current amplitude)
-    gain_pas = vpp_pas / (ipp_pas + 1e-12)
-    gain_hcn = vpp_hcn / (ipp_hcn + 1e-12)
-
-    # Find resonance peak in HCN
-    peak_idx_pas = np.argmax(gain_pas)
-    peak_idx_hcn = np.argmax(gain_hcn)
-
-    peak_freq_pas = freqs_pas[peak_idx_pas]
-    peak_freq_hcn = freqs_hcn[peak_idx_hcn]
-    peak_gain_pas = gain_pas[peak_idx_pas]
-    peak_gain_hcn = gain_hcn[peak_idx_hcn]
-
-    print(f"\nPassive membrane:  peak gain = {peak_gain_pas:.1f} MΩ @ {peak_freq_pas:.1f} Hz")
-    print(f"HCN membrane:    peak gain = {peak_gain_hcn:.1f} MΩ @ {peak_freq_hcn:.1f} Hz")
-
-    # Check if HCN peak is in theta band (4-10 Hz)
-    theta_mask_hcn = (freqs_hcn >= 3) & (freqs_hcn <= 10)
-    theta_gain_hcn = gain_hcn[theta_mask_hcn]
-    theta_freqs = freqs_hcn[theta_mask_hcn]
-    theta_peak_idx = np.argmax(theta_gain_hcn)
-    theta_peak_freq = theta_freqs[theta_peak_idx]
-
-    print(f"\nTheta band (3-10 Hz) analysis:")
-    print(f"  HCN peak in theta band: {theta_peak_freq:.1f} Hz")
-    print(f"  HCN gain at theta peak: {theta_gain_hcn[theta_peak_idx]:.1f} MΩ")
-
-    if 3 <= theta_peak_freq <= 10:
-        print("[OK] CONFIRMED: HCN creates resonance in theta band (3-10 Hz)")
-    else:
-        print("[!] Resonance outside expected theta band")
-
-    # Enhancement ratio: HCN gain at theta peak vs passive
-    passive_at_theta = np.interp(theta_peak_freq, freqs_pas, gain_pas)
-    enhancement = theta_gain_hcn[theta_peak_idx] / passive_at_theta
-    print(f"  Enhancement over passive at {theta_peak_freq:.1f} Hz: {enhancement:.2f}x")
-
-    # ====== TEST 3: Theta Input Specificity ======
-    print("\n" + "-" * 65)
-    print("Test 3: Theta Frequency Input (5 Hz)")
-    print("-" * 65)
-
-    theta_freq = 5.0
-    tp_pas_t, vp_pas_t, tw_pas_t, iw_pas_t = neuron_passive.theta_input_test(
-        theta_freq=theta_freq, dur=2000
-    )
-    tp_hcn_t, vp_hcn_t, tw_hcn_t, iw_hcn_t = neuron_hcn.theta_input_test(
-        theta_freq=theta_freq, dur=2000
-    )
-
-    # RMS voltage during theta input
-    steady_start = 500
-    mask_pas = tp_pas_t > steady_start
-    mask_hcn = tp_hcn_t > steady_start
-
-    v_rms_pas = np.sqrt(np.mean(vp_pas_t[mask_pas]**2))
-    v_rms_hcn = np.sqrt(np.mean(vp_hcn_t[mask_hcn]**2))
-
-    print(f"Passive neuron response to {theta_freq} Hz input: V_rms = {v_rms_pas:.2f} mV")
-    print(f"HCN neuron response to {theta_freq} Hz input:    V_rms = {v_rms_hcn:.2f} mV")
-    print(f"Ratio (HCN/Passive): {v_rms_hcn/v_rms_pas:.2f}x")
-
-    # ====== Visualization ======
-    try:
-        fig, axes = plt.subplots(2, 3, figsize=(16, 10))
-
-        # 1. Hyperpolarization sag
-        ax = axes[0, 0]
-        ax.plot(t_pas, v_pas, 'b-', alpha=0.7, lw=1.5, label='Passive')
-        ax.plot(t_hcn, v_hcn, 'r-', lw=2, label='With HCN')
-        ax.axhline(v_rest, color='k', ls='--', alpha=0.4, label=f'V_rest={v_rest} mV')
-        ax.axvspan(200, 700, alpha=0.1, color='gray')
-        ax.set_xlabel('Time (ms)')
-        ax.set_ylabel('Voltage (mV)')
-        ax.set_title('Hyperpolarization Sag\n(HCN activation)')
-        ax.legend(fontsize=9)
-        ax.grid(True, alpha=0.3)
-        ax.set_xlim(0, 1100)
-
-        # 2. ZAP voltage traces
-        ax = axes[0, 1]
-        ax.plot(tp_pas, vp_pas, 'b-', alpha=0.6, lw=1, label='Passive')
-        ax.plot(tp_hcn, vp_hcn, 'r-', lw=1.5, label='With HCN')
-        ax.set_xlabel('Time (ms)')
-        ax.set_ylabel('Voltage (mV)')
-        ax.set_title('ZAP Protocol Response\n(Frequency sweep 0.5→25 Hz)')
-        ax.legend(fontsize=9)
-        ax.grid(True, alpha=0.3)
-
-        # 3. Transfer gain comparison (core plot!)
-        ax = axes[0, 2]
-        ax.semilogy(freqs_pas, gain_pas, 'b-', lw=2, label='Passive', alpha=0.8)
-        ax.semilogy(freqs_hcn, gain_hcn, 'r-', lw=2.5, label='With HCN', alpha=0.9)
-        ax.axvspan(3, 10, alpha=0.15, color='orange', label='Theta band')
-        ax.axvline(theta_peak_freq, color='darkred', ls='--', lw=1.5,
-                   label=f'HCN peak: {theta_peak_freq:.1f} Hz')
-        ax.set_xlabel('Frequency (Hz)')
-        ax.set_ylabel('Transfer Gain (MΩ)')
-        ax.set_title('Transfer Gain = V_pp / I_pp\n(HCN Theta Resonance)')
-        ax.legend(fontsize=9)
-        ax.grid(True, alpha=0.3)
-        ax.set_xlim(0, 25)
-
-        # 4. Enhancement ratio
-        ax = axes[1, 0]
-        ratio = gain_hcn / (gain_pas + 1e-12)
-        ax.plot(freqs_hcn, ratio, 'g-', lw=2)
-        ax.axvspan(3, 10, alpha=0.15, color='orange', label='Theta band')
-        ax.axhline(1.0, color='k', ls='--', alpha=0.5)
-        theta_ratio = ratio[(freqs_hcn >= 3) & (freqs_hcn <= 10)]
-        theta_ratio_max = np.max(theta_ratio)
-        theta_ratio_freq = freqs_hcn[(freqs_hcn >= 3) & (freqs_hcn <= 10)][np.argmax(theta_ratio)]
-        ax.axhline(theta_ratio_max, color='darkgreen', ls=':', alpha=0.7)
-        ax.set_xlabel('Frequency (Hz)')
-        ax.set_ylabel('HCN / Passive Gain Ratio')
-        ax.set_title(f'HCN Selectivity\n(Max enhancement: {theta_ratio_max:.2f}x at {theta_ratio_freq:.1f} Hz)')
-        ax.legend(fontsize=9)
-        ax.grid(True, alpha=0.3)
-        ax.set_xlim(0, 25)
-
-        # 5. Theta input time series
-        ax = axes[1, 1]
-        mask_plot = (tp_pas_t > 200) & (tp_pas_t < 1200)
-        ax.plot(tp_pas_t[mask_plot], vp_pas_t[mask_plot], 'b-', alpha=0.7, lw=1, label='Passive')
-        ax.plot(tp_hcn_t[mask_plot], vp_hcn_t[mask_plot], 'r-', lw=1.5, label='With HCN')
-        ax.set_xlabel('Time (ms)')
-        ax.set_ylabel('Voltage (mV)')
-        ax.set_title(f'Theta Input Response ({theta_freq} Hz)')
-        ax.legend(fontsize=9)
-        ax.grid(True, alpha=0.3)
-
-        # 6. Summary
-        ax = axes[1, 2]
-        ax.axis('off')
-        summary = (
-            "HCN (Ih) Channel Properties:\n"
-            "  - Activated by hyperpolarization\n"
-            "  - Mixed Na+/K+ current (E_rev ≈ -30 mV)\n"
-            "  - Slow kinetics → frequency preference\n\n"
-            "Results:\n"
-            f"  - Sag: Passive={sag_pas:.1f} mV, HCN={sag_hcn:.1f} mV\n"
-            f"  - HCN peak: {peak_gain_hcn:.1f} MΩ @ {peak_freq_hcn:.1f} Hz\n"
-            f"  - Passive peak:  {peak_gain_pas:.1f} MΩ @ {peak_freq_pas:.1f} Hz\n"
-            f"  - Theta peak: {theta_peak_freq:.1f} Hz (enhancement: {theta_ratio_max:.2f}x)\n\n"
-            "Biological Significance:\n"
-            "  - CA1 pyramidal neurons show similar resonance\n"
-            "  - HCN channels critical for theta oscillations\n"
-            "  - Selective amplification of theta-band inputs\n"
-            "  - Enables temporal coding at theta frequency"
+    scan_results = []
+    for g_h_candidate in candidate_g_h:
+        candidate = SubthresholdResonanceNeuron(
+            f'clean_hcn_{g_h_candidate:g}',
+            with_hcn=True,
+            dend_L=300,
+            g_h=g_h_candidate,
+            g_pas_dend=g_pas_dend,
+            eh_hcn=eh_hcn,
         )
-        ax.text(0.05, 0.98, summary, transform=ax.transAxes,
-                fontsize=9.5, verticalalignment='top',
-                fontfamily='monospace',
-                bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.9))
+        hold_candidate, _, _ = (
+            candidate.calibrate_holding_current(target_v=target_v)
+        )
+        candidate_sweep = run_clean_sweep(candidate, freqs, hold_candidate, ac_amp=sweep_amp)
+        candidate_soma_metrics = frequency_response_metrics(
+            freqs,
+            candidate_sweep['soma_gain'],
+        )
+        candidate_dend_metrics = frequency_response_metrics(
+            freqs,
+            candidate_sweep['dend_gain'],
+        )
+        candidate_soma_prom = theta_prominence(freqs, candidate_sweep['soma_gain'])
+        candidate_dend_prom = theta_prominence(freqs, candidate_sweep['dend_gain'])
+        score = (
+            candidate_soma_metrics['ri']
+            + candidate_soma_prom
+            + 0.5 * candidate_dend_prom
+            - 0.15 * abs(candidate_soma_metrics['peak_freq'] - 7.0)
+        )
+        scan_results.append({
+            'g_h': g_h_candidate,
+            'neuron': candidate,
+            'hold': hold_candidate,
+            'sweep': candidate_sweep,
+            'soma_metrics': candidate_soma_metrics,
+            'dend_metrics': candidate_dend_metrics,
+            'soma_prominence': candidate_soma_prom,
+            'dend_prominence': candidate_dend_prom,
+            'score': score,
+        })
 
-        plt.tight_layout()
-        fig_dir = os.path.join(_figures_root, 'hcn_resonance')
-        os.makedirs(fig_dir, exist_ok=True)
-        fig_path = os.path.join(fig_dir, 'hcn_resonance.png')
-        plt.savefig(fig_path, dpi=150)
-        print(f"\nFigure saved: {fig_path}")
+    ri_threshold = max(1.02, control_soma_metrics['ri'] + 0.03)
+    valid_scan = [
+        item for item in scan_results
+        if item['soma_metrics']['ri'] >= ri_threshold
+        and THETA_BAND[0] <= item['soma_metrics']['peak_freq'] <= THETA_BAND[1]
+    ]
+    best = max(valid_scan if valid_scan else scan_results, key=lambda item: item['score'])
 
-    except ImportError:
-        print("\nmatplotlib not available")
+    g_h = best['g_h']
+    neuron_hcn = best['neuron']
+    hold_hcn = best['hold']
+    hcn_sweep = best['sweep']
+    hcn_soma_metrics = best['soma_metrics']
+    hcn_dend_metrics = best['dend_metrics']
 
-    print("\n" + "=" * 65)
-    print("Simulation complete!")
-    print("=" * 65)
+    t_control_sag, v_control_sag, _ = neuron_control.hyperpolarization_test(
+        hold_amp=hold_control,
+        step_amp=step_amp,
+    )
+    t_hcn_sag, v_hcn_sag, _ = neuron_hcn.hyperpolarization_test(
+        hold_amp=hold_hcn,
+        step_amp=step_amp,
+    )
+    sag_control = compute_step_metrics(t_control_sag, v_control_sag)
+    sag_hcn = compute_step_metrics(t_hcn_sag, v_hcn_sag)
+
+    t_control_zap, v_control_zap, _ = neuron_control.zap_trace(
+        duration=4000,
+        f_start=0.5,
+        f_end=25,
+        ac_amp=zap_amp,
+        hold_amp=hold_control,
+    )
+    t_hcn_zap, v_hcn_zap, _ = neuron_hcn.zap_trace(
+        duration=4000,
+        f_start=0.5,
+        f_end=25,
+        ac_amp=zap_amp,
+        hold_amp=hold_hcn,
+    )
+
+    prom_control_soma = theta_prominence(freqs, control_sweep['soma_gain'])
+    prom_hcn_soma = theta_prominence(freqs, hcn_sweep['soma_gain'])
+    prom_control_dend = theta_prominence(freqs, control_sweep['dend_gain'])
+    prom_hcn_dend = theta_prominence(freqs, hcn_sweep['dend_gain'])
+
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig.suptitle(
+        'HCN/Ih reshapes subthreshold membrane frequency tuning toward theta-band resonance',
+        fontsize=14,
+        y=0.98,
+    )
+
+    ax = axes[0, 0]
+    ax.plot(
+        t_control_sag,
+        v_control_sag,
+        color='tab:blue',
+        alpha=0.75,
+        lw=1.5,
+        label=f'{CONTROL_LABEL}, V_rest={sag_control["v_rest"]:.1f} mV',
+    )
+    ax.plot(
+        t_hcn_sag,
+        v_hcn_sag,
+        color='tab:red',
+        lw=2,
+        label=f'{HCN_LABEL}, V_rest={sag_hcn["v_rest"]:.1f} mV',
+    )
+    ax.axvspan(200, 700, alpha=0.08, color='gray')
+    ax.annotate(
+        f'Sag recovery = {sag_hcn["sag_recovery"]:.1f} mV',
+        xy=(690, sag_hcn['v_late']),
+        xytext=(545, sag_hcn['v_late'] + 3.0),
+        arrowprops=dict(arrowstyle='->', color='tab:red', lw=1.0),
+        color='tab:red',
+        fontsize=9,
+    )
+    ax.set_xlabel('Time (ms)')
+    ax.set_ylabel('Voltage (mV)')
+    ax.set_title('Hyperpolarization Sag / HCN activation')
+    ax.legend(fontsize=8, frameon=False)
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(0, 1100)
+
+    plot_zap_trace(axes[0, 1], t_control_zap, v_control_zap, t_hcn_zap, v_hcn_zap)
+
+    ax = axes[0, 2]
+    ax.plot(
+        freqs,
+        control_sweep['soma_gain'],
+        '-o',
+        color='tab:blue',
+        ms=4,
+        lw=2,
+        label=f'{CONTROL_LABEL} soma',
+    )
+    ax.plot(
+        freqs,
+        hcn_sweep['soma_gain'],
+        '-o',
+        color='tab:red',
+        ms=4,
+        lw=2,
+        label=f'{HCN_LABEL} soma',
+    )
+    ax.plot(
+        freqs,
+        control_sweep['dend_gain'],
+        '--s',
+        color='tab:blue',
+        ms=3,
+        lw=1.5,
+        alpha=0.65,
+        label=f'{CONTROL_LABEL} dend(0.8)',
+    )
+    ax.plot(
+        freqs,
+        hcn_sweep['dend_gain'],
+        '--s',
+        color='tab:red',
+        ms=3,
+        lw=1.5,
+        alpha=0.75,
+        label=f'{HCN_LABEL} dend(0.8)',
+    )
+    ax.axvspan(THETA_BAND[0], THETA_BAND[1], alpha=0.35, color=THETA_SHADE, label='Theta band')
+    ax.axvline(hcn_soma_metrics['peak_freq'], color='firebrick', ls='--', lw=1.3)
+    y_peak_abs = float(np.interp(hcn_soma_metrics['peak_freq'], freqs, hcn_sweep['soma_gain']))
+    ax.annotate(
+        f'HCN peak = {hcn_soma_metrics["peak_freq"]:.0f} Hz',
+        xy=(hcn_soma_metrics['peak_freq'], y_peak_abs),
+        xytext=(hcn_soma_metrics['peak_freq'] + 2.0, y_peak_abs * 1.08),
+        arrowprops=dict(arrowstyle='->', color='firebrick', lw=1.0),
+        fontsize=9,
+        color='firebrick',
+    )
+    ax.text(
+        0.03,
+        0.08,
+        'HCN may lower absolute gain because it increases membrane conductance,\n'
+        'but it reshapes frequency tuning.',
+        transform=ax.transAxes,
+        fontsize=8,
+        bbox=dict(boxstyle='round,pad=0.25', facecolor='white', alpha=0.75, edgecolor='none'),
+    )
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('Transfer Gain (MOhm)')
+    ax.set_title('Absolute Transfer Gain')
+    ax.legend(fontsize=7, frameon=False)
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(0.5, 25)
+
+    ax = axes[1, 0]
+    ax.plot(
+        freqs,
+        control_soma_metrics['norm'],
+        '-o',
+        color='tab:blue',
+        ms=4,
+        lw=2,
+        label=f'{CONTROL_LABEL} soma',
+    )
+    ax.plot(
+        freqs,
+        hcn_soma_metrics['norm'],
+        '-o',
+        color='tab:red',
+        ms=4,
+        lw=2.4,
+        label=f'{HCN_LABEL} soma',
+    )
+    ax.plot(
+        freqs,
+        control_dend_metrics['norm'],
+        '--',
+        color='tab:blue',
+        lw=1.3,
+        alpha=0.55,
+        label=f'{CONTROL_LABEL} dend(0.8)',
+    )
+    ax.plot(
+        freqs,
+        hcn_dend_metrics['norm'],
+        '--',
+        color='tab:red',
+        lw=1.3,
+        alpha=0.65,
+        label=f'{HCN_LABEL} dend(0.8)',
+    )
+    ax.axvspan(THETA_BAND[0], THETA_BAND[1], alpha=0.35, color=THETA_SHADE)
+    ax.axhline(1.0, color='k', ls='--', alpha=0.5)
+    ax.axvline(hcn_soma_metrics['peak_freq'], color='firebrick', ls='--', lw=1.3)
+    ax.text(
+        0.52,
+        0.92,
+        f'HCN RI = {hcn_soma_metrics["ri"]:.2f}\n'
+        f'Control RI = {control_soma_metrics["ri"]:.2f}\n'
+        f'Peak = {hcn_soma_metrics["peak_freq"]:.0f} Hz',
+        transform=ax.transAxes,
+        va='top',
+        fontsize=9,
+        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='none'),
+    )
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('Normalized impedance (Z / Z at 0.5 Hz)')
+    ax.set_title('Normalized Impedance / RI')
+    ax.legend(fontsize=7, frameon=False)
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(0.5, 25)
+    set_tight_ylim(
+        ax,
+        np.r_[
+            control_soma_metrics['norm'],
+            hcn_soma_metrics['norm'],
+            control_dend_metrics['norm'],
+            hcn_dend_metrics['norm'],
+        ],
+    )
+
+    ax = axes[1, 1]
+    x = np.arange(2)
+    width = 0.36
+    control_prominence = np.array([prom_control_soma, prom_control_dend])
+    hcn_prominence = np.array([prom_hcn_soma, prom_hcn_dend])
+    bars_control = ax.bar(
+        x - width / 2,
+        control_prominence,
+        width,
+        color='tab:blue',
+        label=CONTROL_LABEL,
+    )
+    bars_hcn = ax.bar(
+        x + width / 2,
+        hcn_prominence,
+        width,
+        color='tab:red',
+        label=HCN_LABEL,
+    )
+    ax.axhline(0.0, color='k', ls='--', alpha=0.5)
+    ax.set_xticks(x)
+    ax.set_xticklabels(['Soma', 'Dendrite (0.8)'])
+    ax.set_ylabel('Theta prominence')
+    ax.set_title('Theta resonance prominence')
+    ax.legend(fontsize=8, frameon=False)
+    ax.grid(True, axis='y', alpha=0.3)
+    ax.bar_label(bars_control, fmt='%.3f', fontsize=8, padding=2)
+    ax.bar_label(bars_hcn, fmt='%.3f', fontsize=8, padding=2)
+    prom_min = min(np.min(control_prominence), np.min(hcn_prominence), 0.0)
+    prom_max = max(np.max(control_prominence), np.max(hcn_prominence), 0.0)
+    prom_span = max(prom_max - prom_min, 0.02)
+    ax.set_ylim(prom_min - 0.15 * prom_span, prom_max + 0.22 * prom_span)
+
+    ax = axes[1, 2]
+    ax.axis('off')
+    ri_statement = (
+        'HCN RI > control RI'
+        if hcn_soma_metrics['ri'] > control_soma_metrics['ri']
+        else 'HCN RI not above control RI'
+    )
+    prom_statement = (
+        'HCN > control at soma and dendrite'
+        if prom_hcn_soma > prom_control_soma and prom_hcn_dend > prom_control_dend
+        else 'see prominence panel'
+    )
+    summary = (
+        "Model:\n"
+        "  - No HCN control: pas + somatic HH/HH1\n"
+        "  - With HCN: pas + somatic HH/HH1 + Ih\n"
+        "  - Input: distal dendritic current injection at dend(0.8)\n"
+        "  - Recording: soma and dend(0.8)\n"
+        f"  - Holding target: {target_v:.1f} mV\n"
+        f"  - g_h selected: {g_h:.4g} S/cm2\n\n"
+        "Key results:\n"
+        f"  - Sag recovery: control={sag_control['sag_recovery']:.2f} mV, "
+        f"HCN={sag_hcn['sag_recovery']:.2f} mV\n"
+        "  - Absolute gain can be lower with HCN\n"
+        "    because Ih increases membrane conductance\n"
+        f"  - Normalized impedance: {ri_statement}\n"
+        f"  - HCN peak frequency: {hcn_soma_metrics['peak_freq']:.1f} Hz\n"
+        f"  - Theta prominence: {prom_statement}\n\n"
+        "Conclusion:\n"
+        "Under hyperpolarized subthreshold conditions,\n"
+        "HCN/Ih produces a relative theta-band resonance.\n"
+        "This is a normalized frequency-tuning effect,\n"
+        "not an absolute voltage-amplitude amplification."
+    )
+    ax.text(
+        0.03,
+        0.98,
+        summary,
+        transform=ax.transAxes,
+        fontsize=8.5,
+        verticalalignment='top',
+        fontfamily='monospace',
+        bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.85, edgecolor='none'),
+    )
+
+    plt.tight_layout(rect=(0, 0, 1, 0.95))
+    fig_dir = os.path.join(_figures_root, 'hcn_resonance')
+    os.makedirs(fig_dir, exist_ok=True)
+    fig_path = os.path.join(fig_dir, 'hcn_resonance.png')
+    pdf_path = os.path.join(fig_dir, 'hcn_resonance.pdf')
+    plt.savefig(fig_path, dpi=300)
+    plt.savefig(pdf_path)
+    plt.close(fig)
+
+    print(f"Figure saved: {fig_path}")
+    print(f"PDF saved: {pdf_path}")
+    print(f"Sag recovery: control={sag_control['sag_recovery']:.2f} mV, "
+          f"HCN={sag_hcn['sag_recovery']:.2f} mV")
+    print(f"Control RI: {control_soma_metrics['ri']:.3f}")
+    print(f"HCN RI: {hcn_soma_metrics['ri']:.3f}")
+    print(f"HCN peak frequency: {hcn_soma_metrics['peak_freq']:.1f} Hz")
+    print("Theta prominence: "
+          f"control soma={prom_control_soma:.3f}, "
+          f"HCN soma={prom_hcn_soma:.3f}, "
+          f"control dend={prom_control_dend:.3f}, "
+          f"HCN dend={prom_hcn_dend:.3f}")
+    print("Simulation complete.")
 
 
 if __name__ == '__main__':

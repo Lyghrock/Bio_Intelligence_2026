@@ -144,3 +144,6 @@ Part 4: 真实结构中的频率协作
 ## 参考资料
 
 详见 `planning.md` 中的完整参考文献列表。
+
+
+figures\passive_impedance 符合预期
